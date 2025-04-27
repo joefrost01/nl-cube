@@ -1,0 +1,40 @@
+project:
+  type: website
+
+# Configure the website
+website:
+  title: "NL-Cube"
+  # The navbar brand will display the logo + project name
+  navbar:
+    brand:
+      text: "NL-Cube"
+      href: index.qmd
+    logo: "images/logo.png"
+    search: true
+    right:
+      - icon: github
+        href: "https://github.com/neural-chilli/NLCube"
+      - text: "Download"
+        href: "https://github.com/neural-chilli/NLCube/releases"
+
+  # Define the left sidebar navigation structure
+  sidebar:
+    - contents:
+        - text: "Introduction"
+          href: index.qmd
+
+# Theme configuration
+format:
+  html:
+    theme:
+      light: flatly
+      dark: darkly
+    toc: true
+    toc-location: right
+    css: styles.css
+
+# (Optional) Execute options if you have code in pages
+execute:
+  warning: false
+  echo: false
+

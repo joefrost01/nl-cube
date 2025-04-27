@@ -1,0 +1,40 @@
+/* Ensure a consistent navbar height and vertical alignment */
+.navbar {
+    min-height: 70px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    display: flex;
+    align-items: center;
+}
+
+/* Align the logo and title together */
+.navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Ensure nav items are vertically centered */
+.navbar-nav {
+    align-items: center;
+}
+
+/* Center the save button within its container */
+.nav-item.btn-container {
+    display: flex;
+    align-items: center;
+}
+
+/* Global body styling */
+body {
+    font-family: Arial, sans-serif;
+    padding: 0;
+    margin: 0;
+}
+
+/* Perspective viewer styling */
+#viewer {
+    width: 100%;
+    height: 90vh;
+    display: block;
+}
