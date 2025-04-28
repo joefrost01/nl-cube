@@ -49,7 +49,7 @@ async fn sync_upload_handler(
 pub fn ui_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(handlers::ui::index_handler))
-        .route("/static/*path", get(static_handler))
+        .route("/static/{*path}", get(static_handler))
 }
 
 // API Routes - REST API for programmatic access
@@ -64,25 +64,25 @@ pub fn api_routes() -> Router<Arc<AppState>> {
 
                 // Data management
                 .route("/subjects", get(handlers::api::list_subjects))
-                .route("/subjects/:subject", get(handlers::api::get_subject))
-                .route("/subjects/:subject", post(handlers::api::create_subject))
-                .route("/subjects/:subject", delete(handlers::api::delete_subject))
+                .route("/subjects/{subject}", get(handlers::api::get_subject))
+                .route("/subjects/{subject}", post(handlers::api::create_subject))
+                .route("/subjects/{subject}", delete(handlers::api::delete_subject))
 
                 // File upload and processing - using sync handler to avoid send issues
-                .route("/upload/:subject", post(sync_upload_handler))
+                .route("/upload/{subject}", post(sync_upload_handler))
 
 
                 // Schema management
                 .route("/schema", get(handlers::api::get_schema))
 
                 // Data export
-                .route("/export/:format", get(handlers::api::export_data))
+                .route("/export/{format}", get(handlers::api::export_data))
 
                 // Saved queries and reports
                 .route("/reports", get(handlers::api::list_reports))
-                .route("/reports/:id", get(handlers::api::get_report))
+                .route("/reports/{id}", get(handlers::api::get_report))
                 .route("/reports", post(handlers::api::save_report))
-                .route("/reports/:id", delete(handlers::api::delete_report))
+                .route("/reports/{id}", delete(handlers::api::delete_report))
 
                 // System status
                 .route("/status", get(handlers::api::system_status))
