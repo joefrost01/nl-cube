@@ -22,6 +22,7 @@ rust-embed = "8.2"
 minijinja = { version = "2.8.0", features = ["loader"] }
 tokio = { version = "1.35", features = ["full"] }
 duckdb = { version = "1.1.1", features = ["bundled"] }
+r2d2 = "0.8"
 config = "0.15.7"
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
