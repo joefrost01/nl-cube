@@ -1,16 +1,68 @@
-use tracing::info;
-use crate::util::logging::init_tracing;
+use clap::Parser;
+use r2d2::Pool;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tracing::{error, info};
 
-mod llm;
-mod db;
-mod server;
-mod ingest;
 mod config;
+mod db;
+mod ingest;
+mod llm;
+mod server;
 mod util;
 mod web;
 
-// Main, keep it compact and light
-fn main() {
+use crate::config::{AppConfig, CliArgs};
+use crate::db::db_pool::DuckDBConnectionManager;
+use crate::llm::LlmManager;
+use crate::util::logging::init_tracing;
+use crate::web::state::AppState;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logging
     init_tracing();
-    info!("Hello, world!");
+
+    // Parse command line arguments
+    let args = CliArgs::parse();
+
+    // Load configuration
+    let config = match AppConfig::new(&args) {
+        Ok(config) => config,
+        Err(e) => {
+            error!("Failed to load configuration: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    // Ensure data directory exists
+    let data_dir = PathBuf::from(&config.data_dir);
+    if !data_dir.exists() {
+        info!("Creating data directory: {}", config.data_dir);
+        std::fs::create_dir_all(&data_dir)?;
+    }
+
+    // Initialize database connection pool
+    info!("Initializing DuckDB connection pool");
+    let manager = DuckDBConnectionManager::new(config.database.connection_string.clone());
+    let pool = Pool::builder()
+        .max_size(config.database.pool_size as u32)
+        .build(manager)?;
+
+    // Initialize LLM manager
+    info!("Initializing LLM manager with backend: {}", config.llm.backend);
+    let llm_manager = LlmManager::new(&config.llm)?;
+
+    // Create application state
+    let app_state = Arc::new(AppState::new(
+        config.clone(),
+        pool,
+        llm_manager,
+    ));
+
+    // Start the web server
+    info!("Starting NL-Cube server on {}:{}", config.web.host, config.web.port);
+    web::run_server(config.web, app_state).await?;
+
+    Ok(())
 }
