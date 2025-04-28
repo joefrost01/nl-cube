@@ -21,7 +21,6 @@ use axum::http::{HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,7 +35,7 @@ use self::routes::api_routes;
 use self::routes::ui_routes;
 use self::state::AppState;
 
-pub async fn run_server(config: WebConfig, app_state: Arc<AppState>) -> Result<(), Box<dyn Error>> {
+pub async fn run_server(config: WebConfig, app_state: Arc<AppState>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Setup CORS with reasonable defaults
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -54,16 +53,14 @@ pub async fn run_server(config: WebConfig, app_state: Arc<AppState>) -> Result<(
         )
         .layer(cors)
         .layer(CompressionLayer::new())
-        .timeout(Duration::from_secs(30))
-        .into_inner();
+        .timeout(Duration::from_secs(30));
 
     // Build the router
     let app = Router::new()
         .merge(ui_routes())
         .merge(api_routes())
         .fallback(fallback_handler)
-        .with_state(app_state)
-        .layer(middleware);
+        .with_state(app_state);
 
     // Parse the socket address
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)

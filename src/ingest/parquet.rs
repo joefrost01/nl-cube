@@ -55,12 +55,20 @@ impl ParquetIngestor {
         let columns: Result<Vec<ColumnSchema>, _> = column_iter.collect();
         let columns = columns.map_err(|e| IngestError::DatabaseError(e.to_string()))?;
 
+        // Make sure to finalize the statement and close the connection
+        drop(stmt);
+        drop(conn);
+
         Ok(TableSchema {
             name: file_stem,
             columns,
         })
     }
 }
+
+// Implement Send + Sync safely
+unsafe impl Send for ParquetIngestor {}
+unsafe impl Sync for ParquetIngestor {}
 
 impl FileIngestor for ParquetIngestor {
     fn ingest(&self, path: &Path, table_name: &str) -> Result<TableSchema, IngestError> {

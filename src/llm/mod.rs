@@ -29,7 +29,7 @@ impl fmt::Display for LlmError {
 impl Error for LlmError {}
 
 #[async_trait]
-pub trait SqlGenerator {
+pub trait SqlGenerator: Send + Sync {
     async fn generate_sql(&self, question: &str, schema: &str) -> Result<String, LlmError>;
 }
 

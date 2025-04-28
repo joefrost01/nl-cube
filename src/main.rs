@@ -62,7 +62,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start the web server
     info!("Starting NL-Cube server on {}:{}", config.web.host, config.web.port);
-    web::run_server(config.web, app_state).await?;
+    match web::run_server(config.web, app_state).await {
+        Ok(_) => info!("Server stopped gracefully"),
+        Err(e) => {
+            error!("Server error: {}", e);
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error>);
+        }
+    }
 
     Ok(())
 }

@@ -37,7 +37,7 @@ impl From<std::io::Error> for IngestError {
     }
 }
 
-pub trait FileIngestor {
+pub trait FileIngestor: Send + Sync {
     fn ingest(&self, path: &Path, table_name: &str) -> Result<schema::TableSchema, IngestError>;
 }
 

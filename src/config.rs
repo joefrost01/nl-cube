@@ -3,20 +3,20 @@ use config::{Config, ConfigError, File};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseConfig {
     pub connection_string: String,
     pub pool_size: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct WebConfig {
     pub host: String,
     pub port: u16,
     pub static_dir: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct LlmConfig {
     pub backend: String,  // "local", "remote", or "ollama"
     pub model: String,    // Model name

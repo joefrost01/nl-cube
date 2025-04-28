@@ -34,7 +34,7 @@ impl AppState {
         // env.set_loader(minijinja::loaders::FileSystemLoader::new("templates"));
 
         // Configure the template environment
-        env.add_filter("json", |value| {
+        env.add_filter("json", |value: minijinja::value::Value| {
             serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
         });
 
@@ -58,60 +58,69 @@ impl AppState {
 
     // Refreshes available schemas from the database
     pub async fn refresh_schemas(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let conn = self.db_pool.get()?;
+        // First collect all tables and their schemas synchronously
+        let schemas = {
+            // Get database connection
+            let conn = self.db_pool.get()?;
+            let mut schemas = Vec::new();
 
-        // Query DuckDB for all tables
-        let mut stmt = conn.prepare("
-            SELECT table_name FROM information_schema.tables 
-            WHERE table_schema = 'main' AND table_type = 'BASE TABLE'
-        ")?;
+            // First collect all table names (without any await calls)
+            let mut stmt = conn.prepare("
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'main' AND table_type = 'BASE TABLE'
+            ")?;
 
-        let tables: Result<Vec<String>, _> = stmt
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect();
-
-        let tables = tables?;
-        let mut schemas = Vec::new();
-
-        for table in tables {
-            // Get the schema for each table
-            let mut stmt = conn.prepare(&format!(
-                "SELECT column_name, data_type, is_nullable FROM information_schema.columns 
-                WHERE table_schema = 'main' AND table_name = '{}'",
-                table
-            ))?;
-
-            let columns: Result<Vec<(String, String, String)>, _> = stmt
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                })?
+            let tables: Result<Vec<String>, _> = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
                 .collect();
 
-            let columns = columns?;
+            let tables = tables?;
 
-            // Build CREATE TABLE DDL 
-            let mut ddl = format!("CREATE TABLE {} (\n", table);
+            // Process each table to build schema DDL (without any await calls)
+            for table in tables {
+                // Get the schema for each table
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT column_name, data_type, is_nullable FROM information_schema.columns
+                    WHERE table_schema = 'main' AND table_name = '{}'",
+                    table
+                ))?;
 
-            for (i, (column, data_type, is_nullable)) in columns.iter().enumerate() {
-                let nullable = if is_nullable == "YES" { "" } else { " NOT NULL" };
-                ddl.push_str(&format!("    {} {}{}", column, data_type, nullable));
+                let columns: Result<Vec<(String, String, String)>, _> = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    })?
+                    .collect();
 
-                if i < columns.len() - 1 {
-                    ddl.push_str(",\n");
-                } else {
-                    ddl.push_str("\n");
+                let columns = columns?;
+
+                // Build CREATE TABLE DDL
+                let mut ddl = format!("CREATE TABLE {} (\n", table);
+
+                for (i, (column, data_type, is_nullable)) in columns.iter().enumerate() {
+                    let nullable = if is_nullable == "YES" { "" } else { " NOT NULL" };
+                    ddl.push_str(&format!("    {} {}{}", column, data_type, nullable));
+
+                    if i < columns.len() - 1 {
+                        ddl.push_str(",\n");
+                    } else {
+                        ddl.push_str("\n");
+                    }
                 }
+
+                ddl.push_str(");");
+                schemas.push(ddl);
             }
 
-            ddl.push_str(");");
-            schemas.push(ddl);
-        }
+            // Make sure connection is dropped before returning schemas
+            drop(stmt);
+            schemas
+        }; // end of synchronous block
 
-        // Update the schemas
+        // Now update the schemas with a single async operation
         let mut schemas_lock = self.schemas.write().await;
         *schemas_lock = schemas;
 
@@ -120,9 +129,8 @@ impl AppState {
 
     // Refreshes available subjects (data directories)
     pub async fn refresh_subjects(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // First, scan the data directory for subject folders
         let mut subjects = Vec::new();
-
-        // Scan the data directory for subject folders
         let entries = tokio::fs::read_dir(&self.data_dir).await?;
 
         tokio::pin!(entries);
@@ -136,7 +144,7 @@ impl AppState {
             }
         }
 
-        // Update the subjects
+        // Then update the subjects with a single async operation
         let mut subjects_lock = self.subjects.write().await;
         *subjects_lock = subjects;
 

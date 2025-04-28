@@ -1,7 +1,7 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::{StatusCode, header, HeaderValue},
-    response::IntoResponse,
+    http::{StatusCode, header, HeaderValue, HeaderName},
+    response::{IntoResponse, Response},
     Json,
 };
 use duckdb::Row;
@@ -89,7 +89,7 @@ pub struct SystemStatus {
 pub async fn execute_query(
     state: State<Arc<AppState>>,
     Json(payload): Json<ExecuteQueryRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<(StatusCode, Json<QueryMetadata>), (StatusCode, String)> {
     let start_time = Instant::now();
 
     let conn = state.db_pool.get().map_err(|e| {
@@ -131,11 +131,8 @@ pub async fn execute_query(
             columns: Vec::new(),
         };
 
-        return Ok((
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json")],
-            Json(metadata),
-        ));
+        // We need to return the same type as the non-empty case
+        return Ok((StatusCode::OK, Json(metadata)));
     }
 
     let mut stream_writer = StreamWriter::try_new(&mut buffer, schema.deref()).map_err(|e| {
@@ -169,16 +166,10 @@ pub async fn execute_query(
         columns,
     };
 
-    // Set headers with metadata
-    let metadata_header = serde_json::to_string(&metadata).unwrap_or_default();
-
+    // Return a tuple of (StatusCode, Headers, Body) to match the return type
     Ok((
         StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "application/vnd.apache.arrow.stream"),
-            ("X-Query-Metadata", HeaderValue::from_str(&metadata_header).unwrap_or_default()),
-        ],
-        buffer,
+        Json(metadata)
     ))
 }
 
@@ -186,7 +177,7 @@ pub async fn execute_query(
 pub async fn nl_query(
     state: State<Arc<AppState>>,
     Json(payload): Json<NlQueryRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     debug!("Received NL query: {}", payload.question);
 
     // Get the DB schema
@@ -210,23 +201,24 @@ pub async fn nl_query(
     // Now execute the generated SQL
     let execute_request = ExecuteQueryRequest { query: sql.clone() };
 
-    // Include the SQL in the response headers
+    // Execute the query and get the response
     let result = execute_query(state, Json(execute_request)).await?;
-
-    // We need to extract the response parts to add the SQL header
-    let (status, mut headers, body) = result.into_response().into_parts();
+    let mut response = result.into_response();
 
     // Add the SQL as a header
-    headers.insert("X-Generated-SQL", HeaderValue::from_str(&sql).unwrap_or_default());
+    let headers = response.headers_mut();
+    if let Ok(sql_header) = HeaderValue::from_str(&sql) {
+        headers.insert(HeaderName::from_static("x-generated-sql"), sql_header);
+    }
 
-    Ok((status, headers, body).into_response())
+    Ok(response)
 }
 
 // Get Arrow data directly from a table
 pub async fn get_table_arrow(
     state: State<Arc<AppState>>,
     path: Path<String>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<(StatusCode, Json<QueryMetadata>), (StatusCode, String)> {
     let table_name = path.0;
     let start_time = Instant::now();
 
@@ -268,11 +260,7 @@ pub async fn get_table_arrow(
             columns: Vec::new(),
         };
 
-        return Ok((
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json")],
-            Json(metadata),
-        ));
+        return Ok((StatusCode::OK, Json(metadata)));
     }
 
     let mut stream_writer = StreamWriter::try_new(&mut buffer, schema.deref()).map_err(|e| {
@@ -306,16 +294,10 @@ pub async fn get_table_arrow(
         columns,
     };
 
-    // Set headers with metadata
-    let metadata_header = serde_json::to_string(&metadata).unwrap_or_default();
-
+    // Return the tuple format
     Ok((
         StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "application/vnd.apache.arrow.stream"),
-            ("X-Query-Metadata", HeaderValue::from_str(&metadata_header).unwrap_or_default()),
-        ],
-        buffer,
+        Json(metadata)
     ))
 }
 
@@ -460,10 +442,9 @@ pub async fn upload_file(
         return Err((StatusCode::NOT_FOUND, "Subject not found".to_string()));
     }
 
-    let mut uploaded_files = Vec::new();
-    let ingest_manager = IngestManager::new();
-
     // Process each part of the multipart form
+    let mut file_paths: Vec<PathBuf> = Vec::new();
+
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         error!("Failed to process multipart form: {}", e);
         (StatusCode::BAD_REQUEST, "Failed to process upload".to_string())
@@ -482,6 +463,7 @@ pub async fn upload_file(
             .collect::<String>();
 
         let file_path = subject_path.join(&safe_name);
+        file_paths.push(file_path.clone());
 
         // Save file to disk
         let content = field.bytes().await.map_err(|e| {
@@ -498,16 +480,22 @@ pub async fn upload_file(
             error!("Failed to write file: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save file".to_string())
         })?;
+    }
 
+    // Process all files after saving them
+    let mut uploaded_files: Vec<String> = Vec::new();
+    let ingest_manager = IngestManager::new();
+
+    for file_path in file_paths {
         // Ingest the file into DuckDB
-        let table_name = format!("{}_{}", subject, file_path.file_stem().unwrap().to_string_lossy());
+        let table_name = format!("{}_{}", subject, file_path.file_stem().unwrap_or_default().to_string_lossy());
         match ingest_manager.ingest_file(&file_path, &table_name) {
-            Ok(schema) => {
-                info!("Ingested file {} as table {}", safe_name, table_name);
+            Ok(_schema) => {
+                info!("Ingested file {} as table {}", file_path.display(), table_name);
                 uploaded_files.push(table_name);
             },
             Err(e) => {
-                error!("Failed to ingest file {}: {}", safe_name, e);
+                error!("Failed to ingest file {}: {}", file_path.display(), e);
                 // Continue with other files even if one fails
             }
         }
@@ -551,7 +539,8 @@ pub async fn list_reports(
     state: State<Arc<AppState>>,
 ) -> Result<Json<Vec<Report>>, (StatusCode, String)> {
     // Placeholder - in a real app, load from database
-    Ok(Json(Vec::new()))
+    let reports: Vec<Report> = Vec::new();
+    Ok(Json(reports))
 }
 
 pub async fn get_report(

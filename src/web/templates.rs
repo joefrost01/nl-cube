@@ -10,7 +10,7 @@ pub fn init_templates() -> Environment<'static> {
         .expect("Failed to add error template");
 
     // Add filters
-    env.add_filter("json", |value| {
+    env.add_filter("json", |value: minijinja::value::Value| {
         serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
     });
 
