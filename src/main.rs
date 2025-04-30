@@ -55,9 +55,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create application state
     let app_state = Arc::new(AppState::new(
-        config.clone(),
-        pool,
-        llm_manager,
+         config.clone(),
+         pool,
+         llm_manager,
     ));
 
     // Start the web server

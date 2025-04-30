@@ -5,6 +5,7 @@ use minijinja::Environment;
 use r2d2::Pool;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 
 /// Shared application state for the web server
@@ -12,7 +13,7 @@ pub struct AppState {
     pub config: AppConfig,
     pub db_pool: Pool<DuckDBConnectionManager>,
     pub template_env: Environment<'static>,
-    pub llm_manager: LlmManager,
+    pub llm_manager: Arc<Mutex<LlmManager>>,
     pub data_dir: PathBuf,
 
     // Cache for schemas and other dynamic data
@@ -42,7 +43,7 @@ impl AppState {
             config: config.clone(),
             db_pool,
             template_env: env,
-            llm_manager,
+            llm_manager: Arc::new(Mutex::new(llm_manager)),
             data_dir: PathBuf::from(&config.data_dir),
             schemas: RwLock::new(Vec::new()),
             subjects: RwLock::new(Vec::new()),

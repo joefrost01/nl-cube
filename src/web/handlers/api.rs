@@ -175,92 +175,64 @@ pub async fn execute_query(
 
 // Natural language query
 pub async fn nl_query(
-    state: State<Arc<AppState>>,
-    Json(payload): Json<NlQueryRequest>,
-) -> Result<Response, (StatusCode, String)> {
-    debug!("Received NL query: {}", payload.question);
+    State(app_state): State<Arc<AppState>>,
+    Json(payload):    Json<NlQueryRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    use axum::http::{HeaderName, HeaderValue};
+    use tracing::{debug, error, info};
 
-    // Refresh schemas before processing to ensure we have the latest
-    match state.0.refresh_schemas().await {
-        Ok(_) => debug!("Successfully refreshed schemas before query"),
-        Err(e) => error!("Failed to refresh schemas before query: {}", e),
-    }
+    debug!("NL-query: {}", payload.question);
 
-    // Get the DB schema
-    let schema = state.0.get_schemas_ddl().await;
+    // -- keep the schema refresh exactly as before ---------------------------
+    app_state.refresh_schemas().await.ok();
+    let schema_ddl = app_state.get_schemas_ddl().await;
 
-    // Log schema state
-    {
-        let schemas = state.0.schemas.read().await;
-        info!("Current schema count: {}", schemas.len());
-        if schemas.is_empty() {
-            error!("No database schema available. Please upload some data first.");
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "No database schema available. Please upload some data first.".to_string()
-            ));
-        }
-    }
-
-    // Additional check for empty schema string
-    if schema.is_empty() {
-        error!("Schema string is empty even though schemas are available");
+    if schema_ddl.is_empty() {
         return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Schema string is empty. Server configuration issue.".to_string()
+            StatusCode::BAD_REQUEST,
+            "No database schema loaded – upload some data first".into(),
         ));
     }
 
-    // Log the schema being used
-    debug!("Using schema for SQL generation: {}", schema);
+    // ------------------------------------------------------------------------
+    // Grab cheap clones *before* any await that might move across threads.
+    // The Arc<Mutex<_>> is Send, so the outer future is Send.
+    let llm     = Arc::clone(&app_state.llm_manager);
+    let prompt  = payload.question.clone();
+    let schema  = schema_ddl.clone();
 
-    // Generate SQL using LLM
-    let sql = match state.0.llm_manager.generate_sql(&payload.question, &schema).await {
-        Ok(sql) => {
-            info!("Successfully generated SQL: {}", sql);
-            sql
-        },
-        Err(e) => {
-            error!("Failed to generate SQL: {}", e);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to generate SQL: {}", e)));
-        }
-    };
+    // Call LLM inside a tokio task; we must lock before calling generate_sql.
+    let sql = tokio::spawn(async move {
+        let mut mgr = llm.lock().await;           // 🔒 acquire the mutex
+        mgr.generate_sql(&prompt, &schema).await  //   run the model
+    })
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("LLM task failed: {e}")))?
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("LLM error: {e}")))?;
 
-    // Validate the generated SQL is not empty
     if sql.trim().is_empty() {
-        error!("Generated SQL is empty");
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Generated SQL is empty. The model failed to produce valid SQL.".to_string()
+            "The model produced empty SQL".into(),
         ));
     }
 
-    // Create a SQL execution request
-    let execute_request = ExecuteQueryRequest { query: sql.clone() };
+    // ------------------------------------------------------------------------
+    // Execute the SQL via the existing handler
+    let (status, meta) = execute_query(
+        State(app_state.clone()),
+        Json(ExecuteQueryRequest { query: sql.clone() }),
+    )
+        .await?;
 
-    // Execute the query
-    match execute_query(state, Json(execute_request)).await {
-        Ok((status, metadata)) => {
-            info!("Successfully executed SQL with {} rows", metadata.row_count);
-
-            // Create response with metadata
-            let mut response = (status, metadata).into_response();
-
-            // Add the SQL as a header
-            if let Ok(sql_header) = HeaderValue::from_str(&sql) {
-                response.headers_mut().insert(
-                    HeaderName::from_static("x-generated-sql"),
-                    sql_header
-                );
-            }
-
-            Ok(response)
-        },
-        Err(error) => {
-            error!("Failed to execute generated SQL: {:?}", error);
-            Err(error)
-        }
+    // Build the response and attach the generated SQL header
+    let mut resp = (status, meta).into_response();
+    if let Ok(v) = HeaderValue::from_str(&sql) {
+        resp.headers_mut()
+            .insert(HeaderName::from_static("x-generated-sql"), v);
     }
+
+    Ok(resp)
 }
 
 // Get Arrow data directly from a table
