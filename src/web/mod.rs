@@ -16,10 +16,8 @@ pub mod state;
 
 
 use crate::config::WebConfig;
-use axum::extract::Request;
 use axum::http::{HeaderValue, Method, StatusCode};
-use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::response::{IntoResponse};
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -29,7 +27,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{debug, info};
+use tracing::{info};
 
 use self::routes::api_routes;
 use self::routes::ui_routes;
@@ -41,19 +39,6 @@ pub async fn run_server(config: WebConfig, app_state: Arc<AppState>) -> Result<(
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
-
-    // Build the middleware stack
-    let middleware = ServiceBuilder::new()
-        .layer(TraceLayer::new_for_http())
-        .layer(
-            SetResponseHeaderLayer::if_not_present(
-                axum::http::header::CACHE_CONTROL,
-                HeaderValue::from_static("no-cache, no-store"),
-            ),
-        )
-        .layer(cors)
-        .layer(CompressionLayer::new())
-        .timeout(Duration::from_secs(30));
 
     // Build the router
     let app = Router::new()

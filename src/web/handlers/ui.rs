@@ -3,7 +3,6 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use std::sync::Arc;
-use tower_http::services::ServeFile;
 
 use crate::web::state::AppState;
 use crate::web::static_files::get_embedded_file;

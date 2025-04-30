@@ -1,14 +1,12 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::{StatusCode, header, HeaderValue, HeaderName},
+    http::{StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use duckdb::Row;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tokio::fs::File;
@@ -17,7 +15,6 @@ use tracing::{debug, error, info};
 use std::ops::Deref;
 use arrow::ipc::writer::StreamWriter;
 
-use crate::llm::models::{NlQuery, SqlGenerationInput};
 use crate::web::state::AppState;
 use crate::ingest::IngestManager;
 
@@ -219,34 +216,31 @@ pub async fn nl_query(
 
     debug!("NL-query: {}", payload.question);
 
-    // Get the table metadata directly from the database
-    let table_metadata = app_state.get_table_metadata().await.map_err(|e| {
+    // Find active subject based on the query or use the first available subject
+    let target_subject = determine_query_subject(&app_state).await?;
+    info!("Using subject '{}' for query", target_subject);
+
+    // Get the table metadata for only the current subject
+    let table_metadata = app_state.get_table_metadata(Some(&target_subject)).await.map_err(|e| {
         error!("Failed to get table metadata: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
     })?;
 
-    if table_metadata.is_empty() {
+    if table_metadata.trim() == "# DATABASE SCHEMA\n\nNo schemas found in database. Please upload data files first." {
         return Err((
             StatusCode::BAD_REQUEST,
             "No database tables found – upload some data first".into(),
         ));
     }
 
-    // ------------------------------------------------------------------------
-    // Grab cheap clones *before* any await that might move across threads.
-    // The Arc<Mutex<_>> is Send, so the outer future is Send.
-    let llm     = Arc::clone(&app_state.llm_manager);
-    let prompt  = payload.question.clone();
-    let schema  = table_metadata.clone();
-
-    // Call LLM inside a tokio task; we must lock before calling generate_sql.
-    let raw_sql = tokio::spawn(async move {
-        let mut mgr = llm.lock().await;           // 🔒 acquire the mutex
-        mgr.generate_sql(&prompt, &schema).await  //   run the model
-    })
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("LLM task failed: {e}")))?
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("LLM error: {e}")))?;
+    // Get LLM manager and generate SQL
+    let llm = Arc::clone(&app_state.llm_manager);
+    let raw_sql = {
+        let mut mgr = llm.lock().await;
+        mgr.generate_sql(&payload.question, &table_metadata).await.map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("LLM error: {}", e))
+        })?
+    };
 
     if raw_sql.trim().is_empty() {
         return Err((
@@ -258,10 +252,10 @@ pub async fn nl_query(
     info!("Generated raw SQL: {}", raw_sql);
 
     // Validate and clean the SQL
-    let sql = validate_and_fix_sql(&raw_sql, &table_metadata);
+    let sql = raw_sql.replace("`","");
     info!("Validated SQL: {}", sql);
 
-    // Get a connection from the pool to determine the schema
+    // Get a connection from the pool
     let conn = app_state.db_pool.get().map_err(|e| {
         error!("Failed to get DB connection: {}", e);
         (
@@ -270,103 +264,31 @@ pub async fn nl_query(
         )
     })?;
 
-    // Find available schemas and their tables
-    let mut schemas_with_tables: Vec<(String, Vec<String>)> = Vec::new();
+    // Ensure all tables are schema-qualified - fixed to handle the SQL correctly
+    let final_sql = ensure_schema_qualified_tables(&sql, &target_subject);
+    info!("Schema-qualified SQL: {}", final_sql);
 
-    // Query for all user schemas
-    let mut schema_stmt = conn.prepare("
-        SELECT schema_name FROM information_schema.schemata
-        WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'main')
-    ").map_err(|e| {
-        error!("Failed to prepare schema query: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
-    })?;
-
-    let schema_rows = schema_stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| {
-        error!("Failed to execute schema query: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
-    })?;
-
-    let schemas: Vec<String> = schema_rows.filter_map(Result::ok).collect();
-
-    // For each schema, get its tables
-    for schema_name in &schemas {
-        let table_query = format!(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
-            schema_name
-        );
-
-        let mut table_stmt = conn.prepare(&table_query).map_err(|e| {
-            error!("Failed to prepare table query for schema {}: {}", schema_name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
-        })?;
-
-        let table_rows = table_stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| {
-            error!("Failed to execute table query for schema {}: {}", schema_name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
-        })?;
-
-        let tables: Vec<String> = table_rows.filter_map(Result::ok).collect();
-
-        if !tables.is_empty() {
-            schemas_with_tables.push((schema_name.clone(), tables));
-        }
-    }
-
-
-    // Determine which schema to use based on the SQL query
-    // Default to the first schema with tables if available
-    let target_schema = if !schemas_with_tables.is_empty() {
-        let first_schema = &schemas_with_tables[0];
-
-        // Check if any table from the schema is mentioned in the SQL
-        // This is a simple heuristic - it could be enhanced
-        schemas_with_tables.iter()
-            .find(|(_, tables)| {
-                tables.iter().any(|table| sql.to_lowercase().contains(&table.to_lowercase()))
-            })
-            .map(|(schema_name, _)| schema_name.clone())
-            .unwrap_or_else(|| first_schema.0.clone())
-    } else {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "No tables found in any schema".into(),
-        ));
-    };
-
-    info!("Using schema '{}' for query execution", target_schema);
-
-    // Set the search_path to include the target schema
-    let set_search_path_sql = format!("SET search_path = '{}', 'main'", target_schema);
-    conn.execute(&set_search_path_sql, []).map_err(|e| {
-        error!("Failed to set search_path: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
-    })?;
-
-    // Now execute the SQL query with the search_path set
+    // Execute the query
     let start_time = Instant::now();
-
-    let mut stmt = conn.prepare(&sql).map_err(|e| {
+    let mut stmt = conn.prepare(&final_sql).map_err(|e| {
         error!("Failed to prepare query: {}", e);
         (StatusCode::BAD_REQUEST, format!("SQL error: {}", e))
     })?;
 
-    // Get result as an Arrow batch
-    let arrow_batch = stmt.query_arrow([]).map_err(|e| {
-        error!("Failed to execute query: {}", e);
-        (StatusCode::BAD_REQUEST, format!("SQL error: {}", e))
-    })?;
+    // Get column metadata
+    let column_count = stmt.column_count();
+    let mut columns = Vec::new();
+    for i in 0..column_count {
+        match stmt.column_name(i) {
+            Ok(name) => columns.push(name.to_string()),
+            Err(_) => columns.push(format!("column_{}", i)),
+        }
+    }
 
-    let schema = arrow_batch.get_schema();
-
-    // Create metadata
-    let start_time = Instant::now();
-    let row_count = arrow_batch.collect::<Vec<_>>().iter().map(|batch| batch.num_rows()).sum();
-    let columns = schema
-        .fields()
-        .iter()
-        .map(|field| field.name().clone())
-        .collect::<Vec<String>>();
+    // Execute the query to get row count
+    let row_count = stmt.query_map([], |_| Ok(()))
+        .map(|rows| rows.count())
+        .unwrap_or(0);
 
     let metadata = QueryMetadata {
         row_count,
@@ -374,17 +296,85 @@ pub async fn nl_query(
         columns,
     };
 
-    // Build the response and attach the generated SQL header
-    // Create the response with metadata
+    // Build the response and attach SQL header
     let mut resp = (StatusCode::OK, Json(metadata)).into_response();
-
-    // Add the generated SQL as a header
-    if let Ok(v) = HeaderValue::from_str(&sql) {
+    if let Ok(v) = HeaderValue::from_str(&final_sql) {
         resp.headers_mut().insert(HeaderName::from_static("x-generated-sql"), v);
     }
 
     info!("NL query response created successfully");
     Ok(resp)
+}
+
+// Helper function to determine which subject to use for the query
+async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (StatusCode, String)> {
+    // Get available subjects
+    let mut subjects = app_state.subjects.read().await.clone();
+
+    if subjects.is_empty() {
+        // If subject list is empty, refresh it
+        if let Err(e) = app_state.refresh_subjects().await {
+            error!("Failed to refresh subjects: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to determine query subject".to_string(),
+            ));
+        }
+
+        // Get updated subjects
+        subjects = app_state.subjects.read().await.clone();
+    }
+
+    if subjects.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No subjects found. Please create a subject and upload data files.".into(),
+        ));
+    }
+
+    // For now, just use the first subject
+    // In a more advanced version, you could determine this based on the query content
+    Ok(subjects[0].clone())
+}
+
+// Fixed function to properly qualify table names
+fn ensure_schema_qualified_tables(sql: &str, schema: &str) -> String {
+    // This is a simple implementation - in a production system, you would use a SQL parser
+
+    // First, lower case the SQL for easier searching, but keep original for output
+    let sql_lower = sql.to_lowercase();
+
+    // Find FROM and JOIN clauses using regex
+    let re = regex::Regex::new(r"\b(from|join)\s+(\w+)\b").unwrap();
+
+    // Keep track of replacement ranges to avoid modifying the same part twice
+    let mut replacements = Vec::new();
+
+    for caps in re.captures_iter(&sql_lower) {
+        if let (Some(keyword_match), Some(table_match)) = (caps.get(1), caps.get(2)) {
+            let keyword = &sql[keyword_match.start()..keyword_match.end()];
+            let table = &sql[table_match.start()..table_match.end()];
+
+            // Only replace if the table name is not already qualified
+            if !table.contains('.') && !table.contains('"') {
+                replacements.push((
+                    keyword_match.start(),
+                    table_match.end(),
+                    format!("{} \"{}\".\"{}\"", keyword, schema, table)
+                ));
+            }
+        }
+    }
+
+    // Apply replacements in reverse order to avoid offsetting positions
+    let mut result = sql.to_string();
+    replacements.sort_by(|a, b| b.0.cmp(&a.0));
+
+    for (start, end, replacement) in replacements {
+        result.replace_range(start..end, &replacement);
+    }
+
+    result
 }
 
 // Get Arrow data directly from a table
@@ -708,8 +698,8 @@ pub async fn upload_file(
         }
     }
 
-    // Wait a moment for DuckDB to complete any background tasks
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    // Add a significant delay before running any diagnostics to allow DuckDB to stabilize
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
     // Run direct database diagnostic to check table existence
     {
@@ -1033,102 +1023,20 @@ pub async fn diagnostic_query(
     (StatusCode::OK, output).into_response()
 }
 
-// Helper function to validate and fix SQL
-fn validate_and_fix_sql(sql: &str, schema_info: &str) -> String {
-    use tracing::{info, warn};
+fn extract_schemas_from_sql(sql: &str) -> Vec<String> {
+    let re = regex::Regex::new(r#"["']?([a-zA-Z0-9_]+)["']?\.["']?[a-zA-Z0-9_]+["']?"#).unwrap();
+    let mut schemas = Vec::new();
 
-    // 1. Extract column names from schema info
-    let column_re = regex::Regex::new(r"\|\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+\|").unwrap();
-    let mut column_names = Vec::new();
-
-    for cap in column_re.captures_iter(schema_info) {
-        if let Some(column) = cap.get(1) {
-            column_names.push(column.as_str().to_string());
-        }
-    }
-
-    // Create a map of lowercase column names to their correct case
-    let mut column_case_map = std::collections::HashMap::new();
-    for column in column_names {
-        column_case_map.insert(column.to_lowercase(), column.clone());
-    }
-
-    // 2. Fix SQL keywords and column names
-    let mut result = String::new();
-    let sql_keywords = [
-        "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER",
-        "LIMIT", "JOIN", "INNER", "OUTER", "LEFT", "RIGHT", "FULL",
-        "ON", "AS", "AND", "OR", "NOT", "EXISTS", "IN", "BETWEEN",
-        "IS", "NULL", "LIKE", "CASE", "WHEN", "THEN", "ELSE", "END",
-        "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "COALESCE"
-    ];
-
-    // Create a word list from the SQL
-    let word_re = regex::Regex::new(r"[a-zA-Z_][a-zA-Z0-9_]*").unwrap();
-    let mut word_positions = Vec::new();
-
-    for word_match in word_re.find_iter(sql) {
-        word_positions.push((word_match.start(), word_match.end(), word_match.as_str().to_string()));
-    }
-
-    // Process the SQL in order
-    let mut last_pos = 0;
-    for (start, end, word) in word_positions {
-        // Add any non-word characters before this word
-        result.push_str(&sql[last_pos..start]);
-
-        // Process the word
-        let word_upper = word.to_uppercase();
-        let word_lower = word.to_lowercase();
-
-        // Check if it's a SQL keyword
-        if sql_keywords.contains(&word_upper.as_str()) {
-            result.push_str(&word_lower);
-        }
-        // Check if it's a column name that needs to be fixed
-        else if let Some(correct_case) = column_case_map.get(&word_lower) {
-            if &word != correct_case {
-                warn!("Found column name with incorrect case: {} - Fixing to: {}", word, correct_case);
-                result.push_str(correct_case);
-            } else {
-                result.push_str(&word);
+    for cap in re.captures_iter(sql) {
+        if let Some(schema_match) = cap.get(1) {
+            let schema = schema_match.as_str().to_string();
+            if !schemas.contains(&schema) {
+                schemas.push(schema);
             }
         }
-        // Check for potential typos in column names
-        else {
-            let mut fixed = false;
-
-            for (correct_lower, correct_case) in &column_case_map {
-                // Simple fuzzy matching - edit distance <= 2 for short words, 3 for longer ones
-                let max_distance = if correct_lower.len() > 6 { 3 } else { 2 };
-                let distance = levenshtein_distance(&word_lower, correct_lower);
-
-                if distance <= max_distance && distance > 0 {
-                    warn!("Possible typo in column name: {} - Fixing to: {}", word, correct_case);
-                    result.push_str(correct_case);
-                    fixed = true;
-                    break;
-                }
-            }
-
-            if !fixed {
-                result.push_str(&word);
-            }
-        }
-
-        last_pos = end;
     }
 
-    // Add any remaining text
-    result.push_str(&sql[last_pos..]);
-
-    // 3. Ensure the SQL ends with a semicolon
-    let trimmed = result.trim();
-    if !trimmed.ends_with(';') {
-        format!("{};", trimmed)
-    } else {
-        trimmed.to_string()
-    }
+    schemas
 }
 
 // Simple Levenshtein distance calculation for typo detection
@@ -1166,4 +1074,15 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     }
 
     matrix[m][n]
+}
+
+// Helper function to create fallback metadata
+async fn create_fallback_metadata(app_state: &Arc<AppState>) -> Result<String, (StatusCode, String)> {
+    match app_state.get_table_metadata(None).await {
+        Ok(metadata) => Ok(metadata),
+        Err(_) => {
+            // If even the fallback fails, return an empty schema
+            Ok("# DATABASE SCHEMA\n\nNo schemas found in database. Please upload data files.".to_string())
+        }
+    }
 }

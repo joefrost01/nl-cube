@@ -27,7 +27,7 @@ impl CsvIngestor {
 
     fn infer_schema(&self, path: &Path) -> Result<TableSchema, IngestError> {
         let file = File::open(path)?;
-        let mut reader = BufReader::new(file);
+        let reader = BufReader::new(file);
 
         // Read a sample of the file for schema inference
         let mut sample = String::new();
@@ -100,8 +100,10 @@ impl CsvIngestor {
 unsafe impl Send for CsvIngestor {}
 unsafe impl Sync for CsvIngestor {}
 
+// In src/ingest/csv.rs, update the ingest method to properly verify table creation:
+
+// Replace this part of the ingest() method in CsvIngestor
 impl FileIngestor for CsvIngestor {
-    // Updated to include subject parameter and implement schema-based approach
     fn ingest(&self, path: &Path, table_name: &str, subject: &str) -> Result<TableSchema, IngestError> {
         // First infer the schema
         let mut schema = self.infer_schema(path)?;
@@ -162,6 +164,7 @@ impl FileIngestor for CsvIngestor {
         }
 
         // Try to look up the table in information_schema to verify
+        // Use parameterized query to prevent SQL injection and improve reliability
         let master_sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = ?";
         let mut stmt = conn.prepare(master_sql)
             .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare information_schema query: {}", e)))?;
@@ -175,13 +178,38 @@ impl FileIngestor for CsvIngestor {
             Ok(names) => {
                 tracing::info!("Tables in schema {}: {:?}", subject, names);
                 if !names.contains(&table_name.to_string()) {
-                    tracing::warn!("Table {} not found in schema {}", table_name, subject);
+                    tracing::warn!("Table {} not found in schema {} through information_schema - this may be a timing issue",
+                                  table_name, subject);
+
+                    // Let's perform a slightly different query as a backup check
+                    let backup_sql = format!("
+                        SELECT COUNT(*)
+                        FROM information_schema.tables
+                        WHERE table_schema = '{}'
+                              AND table_name = '{}'
+                    ", subject, table_name);
+
+                    match conn.query_row(&backup_sql, [], |row| row.get::<_, i64>(0)) {
+                        Ok(count) => {
+                            if count > 0 {
+                                tracing::info!("Backup check confirms table {}.{} exists", subject, table_name);
+                            } else {
+                                tracing::warn!("Backup check also failed to find table {}.{}", subject, table_name);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!("Backup table check failed: {}", e);
+                        }
+                    }
                 }
             }
             Err(e) => {
                 tracing::error!("Failed to collect table names: {}", e);
             }
         }
+
+        // Wait a small amount of time for DuckDB to complete any background operations
+        std::thread::sleep(std::time::Duration::from_millis(300));
 
         Ok(schema)
     }

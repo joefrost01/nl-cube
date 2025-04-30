@@ -1,4 +1,3 @@
-use tracing::Level;
 use tracing_subscriber::{fmt, EnvFilter};
 
 /// Initializes tracing/logging based on environment variables.
