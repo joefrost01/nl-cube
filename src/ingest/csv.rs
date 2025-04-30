@@ -7,17 +7,22 @@ use crate::ingest::schema::{TableSchema, ColumnSchema, DataType};
 
 pub struct CsvIngestor {
     sample_size: usize,
+    connection_string: String,
 }
 
 impl CsvIngestor {
-    pub fn new() -> Self {
+    pub fn new(connection_string: String) -> Self {
         Self {
             sample_size: 1000, // Default sample size for schema inference
+            connection_string,
         }
     }
 
-    pub fn with_sample_size(sample_size: usize) -> Self {
-        Self { sample_size }
+    pub fn with_sample_size(connection_string: String, sample_size: usize) -> Self {
+        Self {
+            sample_size,
+            connection_string,
+        }
     }
 
     fn infer_schema(&self, path: &Path) -> Result<TableSchema, IngestError> {
@@ -101,8 +106,75 @@ impl FileIngestor for CsvIngestor {
         let mut schema = self.infer_schema(path)?;
         schema.name = table_name.to_string();
 
-        // In a real implementation, we would now load the data into DuckDB
-        // using the inferred schema and the specified table name
+        // Get the absolute path to the CSV file for DuckDB
+        let absolute_path = path.canonicalize()
+            .map_err(|e| IngestError::IoError(e))?;
+
+        // Use the environment DATABASE_URL variable to determine which file to open
+        let db_file = std::env::var("DATABASE_URL").unwrap_or_else(|_| "nl-cube.db".to_string());
+        tracing::info!("Opening database connection to: {}", db_file);
+
+        // Connect to the actual DuckDB database
+        let conn = Connection::open(&db_file)
+            .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
+
+        // Log database and table info
+        tracing::info!("Ingesting file to DuckDB. Table: {}, File: {}",
+                       table_name, absolute_path.display());
+
+        // Create a more robust create table statement with explicit DROP IF EXISTS
+        let drop_sql = format!("DROP TABLE IF EXISTS \"{}\"", table_name);
+
+        // First drop the table if it exists
+        conn.execute(&drop_sql, [])
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to drop existing table: {}", e)))?;
+
+        // Now use DuckDB's CSV reading to create the table directly
+        let create_sql = format!(
+            "CREATE TABLE \"{}\" AS SELECT * FROM read_csv_auto('{}', HEADER=true, AUTO_DETECT=true)",
+            table_name,
+            absolute_path.to_string_lossy()
+        );
+
+        tracing::info!("Executing SQL: {}", create_sql);
+
+        conn.execute(&create_sql, [])
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to create table: {}", e)))?;
+
+        // Verify table was created
+        let verify_sql = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
+
+        match conn.query_row(&verify_sql, [], |row| row.get::<_, i64>(0)) {
+            Ok(count) => {
+                tracing::info!("Successfully created table {} with {} rows", table_name, count);
+            }
+            Err(e) => {
+                tracing::error!("Table creation verification failed: {}", e);
+                return Err(IngestError::DatabaseError(format!("Table verification failed: {}", e)));
+            }
+        }
+
+        // Try to look up the table in sqlite_master to verify
+        let master_sql = "SELECT name FROM sqlite_master WHERE type='table'";
+        let mut stmt = conn.prepare(master_sql)
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare sqlite_master query: {}", e)))?;
+
+        let table_names: Result<Vec<String>, _> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to query sqlite_master: {}", e)))?
+            .collect();
+
+        match table_names {
+            Ok(names) => {
+                tracing::info!("Tables in sqlite_master: {:?}", names);
+                if !names.contains(&table_name.to_string()) {
+                    tracing::warn!("Table {} not found in sqlite_master", table_name);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to collect table names: {}", e);
+            }
+        }
 
         Ok(schema)
     }

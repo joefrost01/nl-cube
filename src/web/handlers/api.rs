@@ -180,39 +180,87 @@ pub async fn nl_query(
 ) -> Result<Response, (StatusCode, String)> {
     debug!("Received NL query: {}", payload.question);
 
+    // Refresh schemas before processing to ensure we have the latest
+    match state.0.refresh_schemas().await {
+        Ok(_) => debug!("Successfully refreshed schemas before query"),
+        Err(e) => error!("Failed to refresh schemas before query: {}", e),
+    }
+
     // Get the DB schema
-    let schema = state.get_schemas_ddl().await;
+    let schema = state.0.get_schemas_ddl().await;
+
+    // Log schema state
+    {
+        let schemas = state.0.schemas.read().await;
+        info!("Current schema count: {}", schemas.len());
+        if schemas.is_empty() {
+            error!("No database schema available. Please upload some data first.");
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "No database schema available. Please upload some data first.".to_string()
+            ));
+        }
+    }
+
+    // Additional check for empty schema string
     if schema.is_empty() {
-        error!("No database schema available. Please upload some data first.");
+        error!("Schema string is empty even though schemas are available");
         return Err((
-            StatusCode::BAD_REQUEST,
-            "No database schema available. Please upload some data first.".to_string()
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Schema string is empty. Server configuration issue.".to_string()
         ));
     }
 
+    // Log the schema being used
+    debug!("Using schema for SQL generation: {}", schema);
+
     // Generate SQL using LLM
-    let sql = state.llm_manager.generate_sql(&payload.question, &schema).await
-        .map_err(|e| {
+    let sql = match state.0.llm_manager.generate_sql(&payload.question, &schema).await {
+        Ok(sql) => {
+            info!("Successfully generated SQL: {}", sql);
+            sql
+        },
+        Err(e) => {
             error!("Failed to generate SQL: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to generate SQL: {}", e))
-        })?;
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to generate SQL: {}", e)));
+        }
+    };
 
-    debug!("Generated SQL: {}", sql);
-
-    // Now execute the generated SQL
-    let execute_request = ExecuteQueryRequest { query: sql.clone() };
-
-    // Execute the query and get the response
-    let result = execute_query(state, Json(execute_request)).await?;
-    let mut response = result.into_response();
-
-    // Add the SQL as a header
-    let headers = response.headers_mut();
-    if let Ok(sql_header) = HeaderValue::from_str(&sql) {
-        headers.insert(HeaderName::from_static("x-generated-sql"), sql_header);
+    // Validate the generated SQL is not empty
+    if sql.trim().is_empty() {
+        error!("Generated SQL is empty");
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Generated SQL is empty. The model failed to produce valid SQL.".to_string()
+        ));
     }
 
-    Ok(response)
+    // Create a SQL execution request
+    let execute_request = ExecuteQueryRequest { query: sql.clone() };
+
+    // Execute the query
+    match execute_query(state, Json(execute_request)).await {
+        Ok((status, metadata)) => {
+            info!("Successfully executed SQL with {} rows", metadata.row_count);
+
+            // Create response with metadata
+            let mut response = (status, metadata).into_response();
+
+            // Add the SQL as a header
+            if let Ok(sql_header) = HeaderValue::from_str(&sql) {
+                response.headers_mut().insert(
+                    HeaderName::from_static("x-generated-sql"),
+                    sql_header
+                );
+            }
+
+            Ok(response)
+        },
+        Err(error) => {
+            error!("Failed to execute generated SQL: {:?}", error);
+            Err(error)
+        }
+    }
 }
 
 // Get Arrow data directly from a table
@@ -483,28 +531,117 @@ pub async fn upload_file(
         })?;
     }
 
-    // Process all files after saving them
+    // Process all files after saving them - DIRECTLY USING THE CONNECTION POOL
     let mut uploaded_files: Vec<String> = Vec::new();
-    let ingest_manager = IngestManager::new();
+
+    // Get a direct database connection for creating tables
+    let conn = state.db_pool.get().map_err(|e| {
+        error!("Failed to get DB connection: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, "Database connection error".to_string())
+    })?;
 
     for file_path in file_paths {
-        // Ingest the file into DuckDB
+        // Generate a table name based on subject and file name
         let table_name = format!("{}_{}", subject, file_path.file_stem().unwrap_or_default().to_string_lossy());
-        match ingest_manager.ingest_file(&file_path, &table_name) {
-            Ok(_schema) => {
-                info!("Ingested file {} as table {}", file_path.display(), table_name);
+
+        info!("Creating table {} from file {}", table_name, file_path.display());
+
+        // Get the absolute path
+        let absolute_path = file_path.canonicalize().map_err(|e| {
+            error!("Failed to get absolute path: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Path error: {}", e))
+        })?;
+
+        // Drop table if exists
+        match conn.execute(&format!("DROP TABLE IF EXISTS \"{}\"", table_name), []) {
+            Ok(_) => info!("Successfully dropped table if it existed"),
+            Err(e) => error!("Error dropping table: {}", e),
+        }
+
+        // Create table directly from CSV
+        let create_sql = format!(
+            "CREATE TABLE \"{}\" AS SELECT * FROM read_csv_auto('{}', HEADER=true)",
+            table_name,
+            absolute_path.to_string_lossy()
+        );
+
+        info!("Executing SQL: {}", create_sql);
+
+        match conn.execute(&create_sql, []) {
+            Ok(_) => {
+                info!("Successfully created table {}", table_name);
                 uploaded_files.push(table_name);
             },
             Err(e) => {
-                error!("Failed to ingest file {}: {}", file_path.display(), e);
+                error!("Failed to create table {}: {}", table_name, e);
                 // Continue with other files even if one fails
             }
         }
     }
 
-    // Refresh schemas after ingestion
-    state.refresh_schemas().await.ok();
+    // Wait a moment for DuckDB to complete any background tasks
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
+    // Run direct database diagnostic to check table existence
+    {
+        info!("Running database diagnostic...");
+        info!("Connection string from config: {}", state.config.database.connection_string);
+
+        // Try various ways to list tables
+        info!("Trying sqlite_master:");
+        match conn.prepare("SELECT name FROM sqlite_master WHERE type='table'") {
+            Ok(mut stmt) => {
+                match stmt.query_map([], |row| row.get::<_, String>(0)) {
+                    Ok(rows) => {
+                        let tables: Vec<String> = rows.filter_map(Result::ok).collect();
+                        info!("Found {} tables in sqlite_master: {:?}", tables.len(), tables);
+                    }
+                    Err(e) => {
+                        error!("Error executing sqlite_master query: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Error preparing sqlite_master query: {}", e);
+            }
+        }
+
+        // Try SHOW TABLES
+        info!("Trying SHOW TABLES:");
+        match conn.prepare("SHOW TABLES") {
+            Ok(mut stmt) => {
+                match stmt.query_map([], |row| row.get::<_, String>(0)) {
+                    Ok(rows) => {
+                        let tables: Vec<String> = rows.filter_map(Result::ok).collect();
+                        info!("Found {} tables with SHOW TABLES: {:?}", tables.len(), tables);
+                    }
+                    Err(e) => {
+                        error!("Error executing SHOW TABLES: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Error preparing SHOW TABLES: {}", e);
+            }
+        }
+    }
+
+    // Explicitly refresh the schema cache after ingestion
+    match state.refresh_schemas().await {
+        Ok(_) => info!("Successfully refreshed schemas after file upload"),
+        Err(e) => error!("Failed to refresh schemas after upload: {}", e),
+    }
+
+    // Double-check that we have schemas after refresh
+    {
+        let schemas = state.schemas.read().await;
+        info!("After refresh: Found {} schemas", schemas.len());
+        if !schemas.is_empty() {
+            debug!("First schema after refresh: {}", schemas[0]);
+        }
+    }
+
+    // Return the list of successfully uploaded and ingested files
     Ok(Json(uploaded_files))
 }
 
@@ -618,4 +755,89 @@ pub async fn system_status(
         table_count: table_count as usize,
         report_count: 0, // Placeholder
     }))
+}
+
+// Add this to src/web/handlers/api.rs
+
+// Diagnostic endpoint
+pub async fn diagnostic_query(
+    state: State<Arc<AppState>>,
+) -> impl IntoResponse {
+    // First get a connection from the pool
+    let conn = match state.db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to get DB connection: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Database connection error".to_string()).into_response();
+        }
+    };
+
+    // Try various queries to check the database state
+    let mut output = String::new();
+    output.push_str("Database Diagnostic Results:\n\n");
+
+    // Check connection string
+    output.push_str(&format!("Connection string: {}\n\n", state.config.database.connection_string));
+
+    // Try listing tables using sqlite_master
+    match conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'") {
+        Ok(mut stmt) => {
+            match stmt.query_map([], |row| row.get::<_, String>(0)) {
+                Ok(rows) => {
+                    let tables: Vec<String> = rows.filter_map(Result::ok).collect();
+                    output.push_str(&format!("Tables in sqlite_master: {:?}\n", tables));
+
+                    // For each table, try to get column info
+                    for table in &tables {
+                        output.push_str(&format!("\nColumns for table {}:\n", table));
+                        match conn.prepare(&format!("PRAGMA table_info(\"{}\")", table)) {
+                            Ok(mut col_stmt) => {
+                                match col_stmt.query_map([], |row| {
+                                    Ok((
+                                        row.get::<_, i32>(0).unwrap_or(-1),  // cid
+                                        row.get::<_, String>(1).unwrap_or_else(|_| "unknown".to_string()), // name
+                                        row.get::<_, String>(2).unwrap_or_else(|_| "unknown".to_string()), // type
+                                    ))
+                                }) {
+                                    Ok(col_rows) => {
+                                        let cols: Vec<_> = col_rows.filter_map(Result::ok).collect();
+                                        output.push_str(&format!("{:?}\n", cols));
+                                    }
+                                    Err(e) => {
+                                        output.push_str(&format!("Error getting columns: {}\n", e));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                output.push_str(&format!("Error preparing PRAGMA table_info: {}\n", e));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    output.push_str(&format!("Error executing sqlite_master query: {}\n", e));
+                }
+            }
+        }
+        Err(e) => {
+            output.push_str(&format!("Error preparing sqlite_master query: {}\n", e));
+        }
+    };
+
+    // Force schema refresh and check results
+    match state.refresh_schemas().await {
+        Ok(_) => {
+            let schemas = state.schemas.read().await;
+            output.push_str(&format!("\nAfter refresh: Found {} schemas\n", schemas.len()));
+            if !schemas.is_empty() {
+                output.push_str(&format!("First schema: {}\n", schemas[0]));
+            }
+        }
+        Err(e) => {
+            output.push_str(&format!("\nSchema refresh error: {}\n", e));
+        }
+    }
+
+    // Return the diagnostic output
+    (StatusCode::OK, output).into_response()
 }

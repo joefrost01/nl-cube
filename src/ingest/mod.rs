@@ -44,13 +44,23 @@ pub trait FileIngestor: Send + Sync {
 pub struct IngestManager {
     csv_ingestor: csv::CsvIngestor,
     parquet_ingestor: parquet::ParquetIngestor,
+    connection_string: String,
 }
 
 impl IngestManager {
     pub fn new() -> Self {
         Self {
-            csv_ingestor: csv::CsvIngestor::new(),
+            csv_ingestor: csv::CsvIngestor::new("nl-cube.db".to_string()),
             parquet_ingestor: parquet::ParquetIngestor::new(),
+            connection_string: "nl-cube.db".to_string(),
+        }
+    }
+
+    pub fn with_connection_string(connection_string: String) -> Self {
+        Self {
+            csv_ingestor: csv::CsvIngestor::new(connection_string.clone()),
+            parquet_ingestor: parquet::ParquetIngestor::new(),
+            connection_string,
         }
     }
 

@@ -64,11 +64,15 @@ impl AppState {
             let conn = self.db_pool.get()?;
             let mut schemas = Vec::new();
 
-            // First collect all table names (without any await calls)
+            // Use EXACTLY the same SQL that succeeded in the diagnostics
+            tracing::info!("Refreshing schemas using direct sqlite_master query");
             let mut stmt = conn.prepare("
-                SELECT table_name FROM information_schema.tables
-                WHERE table_schema = 'main' AND table_type = 'BASE TABLE'
-            ")?;
+            SELECT name FROM sqlite_master
+            WHERE type='table'
+            AND name NOT LIKE 'sqlite_%'
+            AND name NOT LIKE 'pg_%'
+            AND name NOT LIKE 'information_schema.%'
+        ")?;
 
             let tables: Result<Vec<String>, _> = stmt
                 .query_map([], |row| row.get::<_, String>(0))?
@@ -76,53 +80,95 @@ impl AppState {
 
             let tables = tables?;
 
-            // Process each table to build schema DDL (without any await calls)
-            for table in tables {
-                // Get the schema for each table
-                let mut stmt = conn.prepare(&format!(
-                    "SELECT column_name, data_type, is_nullable FROM information_schema.columns
-                    WHERE table_schema = 'main' AND table_name = '{}'",
-                    table
-                ))?;
+            if tables.is_empty() {
+                tracing::warn!("No tables found in the database during schema refresh");
 
-                let columns: Result<Vec<(String, String, String)>, _> = stmt
-                    .query_map([], |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, String>(2)?,
-                        ))
-                    })?
-                    .collect();
+                // Try SHOW TABLES as a fallback since that worked in diagnostics
+                match conn.prepare("SHOW TABLES") {
+                    Ok(mut show_stmt) => {
+                        let show_tables: Result<Vec<String>, _> = show_stmt
+                            .query_map([], |row| row.get::<_, String>(0))
+                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
+                            .collect();
 
-                let columns = columns?;
-
-                // Build CREATE TABLE DDL
-                let mut ddl = format!("CREATE TABLE {} (\n", table);
-
-                for (i, (column, data_type, is_nullable)) in columns.iter().enumerate() {
-                    let nullable = if is_nullable == "YES" { "" } else { " NOT NULL" };
-                    ddl.push_str(&format!("    {} {}{}", column, data_type, nullable));
-
-                    if i < columns.len() - 1 {
-                        ddl.push_str(",\n");
-                    } else {
-                        ddl.push_str("\n");
+                        match show_tables {
+                            Ok(show_tables) => {
+                                tracing::info!("SHOW TABLES found {} tables: {:?}", show_tables.len(), show_tables);
+                                if !show_tables.is_empty() {
+                                    // Use these tables instead
+                                    tracing::info!("Using tables from SHOW TABLES command");
+                                    for table in &show_tables {
+                                        schemas.push(format!("CREATE TABLE \"{}\" (placeholder VARCHAR);", table));
+                                    }
+                                    // Skip further processing
+                                    let mut schemas_lock = self.schemas.write().await;
+                                    *schemas_lock = schemas;
+                                    tracing::info!("Schema refresh complete using SHOW TABLES, found {} schemas", schemas_lock.len());
+                                    return Ok(());
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Error collecting SHOW TABLES results: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error preparing SHOW TABLES: {}", e);
                     }
                 }
-
-                ddl.push_str(");");
-                schemas.push(ddl);
+            } else {
+                tracing::info!("Found {} tables during schema refresh: {:?}", tables.len(), tables);
             }
 
-            // Make sure connection is dropped before returning schemas
-            drop(stmt);
+            // Process each table to build schema DDL
+            for table in tables {
+                tracing::info!("Processing table schema for: {}", table);
+
+                // Simplified approach - just create a basic CREATE TABLE statement
+                // since we had issues with PRAGMA table_info
+                let mut ddl = format!("CREATE TABLE \"{}\" (\n", table);
+
+                // Try to get column info using a SELECT * LIMIT 0
+                match conn.prepare(&format!("SELECT * FROM \"{}\" LIMIT 0", table)) {
+                    Ok(stmt) => {
+                        let column_count = stmt.column_count();
+                        tracing::info!("Table {} has {} columns", table, column_count);
+
+                        for i in 0..column_count {
+                            let column_name = stmt.column_name(i).map_or("unknown", |s| s);
+                            let column_type = "VARCHAR"; // Default to VARCHAR
+
+                            ddl.push_str(&format!("    \"{}\" {}", column_name, column_type));
+
+                            if i < column_count - 1 {
+                                ddl.push_str(",\n");
+                            } else {
+                                ddl.push_str("\n");
+                            }
+                        }
+
+                        ddl.push_str(");");
+                        schemas.push(ddl.clone());
+                        tracing::info!("Added schema: {}", ddl);
+                    },
+                    Err(e) => {
+                        tracing::error!("Failed to get column info for table {}: {}", table, e);
+                        // Still create a basic schema
+                        ddl.push_str("    placeholder VARCHAR\n);");
+                        schemas.push(ddl.clone());
+                        tracing::info!("Added placeholder schema: {}", ddl);
+                    }
+                }
+            }
+
             schemas
-        }; // end of synchronous block
+        };
 
         // Now update the schemas with a single async operation
         let mut schemas_lock = self.schemas.write().await;
         *schemas_lock = schemas;
+
+        tracing::info!("Schema refresh complete, found {} schemas", schemas_lock.len());
 
         Ok(())
     }
@@ -147,6 +193,78 @@ impl AppState {
         // Then update the subjects with a single async operation
         let mut subjects_lock = self.subjects.write().await;
         *subjects_lock = subjects;
+
+        Ok(())
+    }
+
+    pub async fn diagnose_db(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Get database connection from the pool
+        let conn = self.db_pool.get()?;
+
+        tracing::info!("Running database diagnostic...");
+
+        // Try various ways to list tables
+        tracing::info!("Trying sqlite_master:");
+        let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table'")?;
+        let tables: Result<Vec<String>, _> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect();
+
+        match tables {
+            Ok(tables) => {
+                tracing::info!("Found {} tables in sqlite_master: {:?}", tables.len(), tables);
+            },
+            Err(e) => {
+                tracing::error!("Error querying sqlite_master: {}", e);
+            }
+        }
+
+        // Try SHOW TABLES
+        tracing::info!("Trying SHOW TABLES:");
+        match conn.prepare("SHOW TABLES") {
+            Ok(mut stmt) => {
+                let tables: Result<Vec<String>, _> = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect();
+
+                match tables {
+                    Ok(tables) => {
+                        tracing::info!("Found {} tables with SHOW TABLES: {:?}", tables.len(), tables);
+                    },
+                    Err(e) => {
+                        tracing::error!("Error executing SHOW TABLES: {}", e);
+                    }
+                }
+            },
+            Err(e) => {
+                tracing::error!("Error preparing SHOW TABLES: {}", e);
+            }
+        }
+
+        // Try information_schema
+        tracing::info!("Trying information_schema:");
+        match conn.prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'") {
+            Ok(mut stmt) => {
+                let tables: Result<Vec<String>, _> = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect();
+
+                match tables {
+                    Ok(tables) => {
+                        tracing::info!("Found {} tables in information_schema: {:?}", tables.len(), tables);
+                    },
+                    Err(e) => {
+                        tracing::error!("Error querying information_schema: {}", e);
+                    }
+                }
+            },
+            Err(e) => {
+                tracing::error!("Error preparing information_schema query: {}", e);
+            }
+        }
+
+        // Get connection string from config
+        tracing::info!("Using database connection string: {}", self.config.database.connection_string);
 
         Ok(())
     }
