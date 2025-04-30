@@ -35,7 +35,7 @@ pub struct QueryMetadata {
     pub execution_time_ms: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct NlQueryRequest {
     pub question: String,
 }
@@ -176,8 +176,8 @@ pub async fn execute_query(
 // Natural language query
 pub async fn nl_query(
     State(app_state): State<Arc<AppState>>,
-    Json(payload):    Json<NlQueryRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+    Json(payload): Json<NlQueryRequest>,
+) -> Result<Response, (StatusCode, String)> {
     use axum::http::{HeaderName, HeaderValue};
     use tracing::{debug, error, info};
 

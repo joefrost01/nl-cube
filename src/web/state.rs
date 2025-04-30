@@ -59,111 +59,116 @@ impl AppState {
 
     // Refreshes available schemas from the database
     pub async fn refresh_schemas(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // First collect all tables and their schemas synchronously
-        let schemas = {
+        // Use a blocking task to avoid thread-safety issues with DuckDB
+        let db_connection_string = self.config.database.connection_string.clone();
+
+        // Perform the database query in a blocking task
+        let schemas = tokio::task::spawn_blocking(move || -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
             // Get database connection
-            let conn = self.db_pool.get()?;
+            let conn = duckdb::Connection::open(&db_connection_string)?;
             let mut schemas = Vec::new();
 
-            // Use EXACTLY the same SQL that succeeded in the diagnostics
-            tracing::info!("Refreshing schemas using direct sqlite_master query");
-            let mut stmt = conn.prepare("
-            SELECT name FROM sqlite_master
-            WHERE type='table'
-            AND name NOT LIKE 'sqlite_%'
-            AND name NOT LIKE 'pg_%'
-            AND name NOT LIKE 'information_schema.%'
-        ")?;
+            // Try multiple approaches to get tables
+            // First try with SHOW TABLES which works well with DuckDB
+            let mut tables = Vec::new();
 
-            let tables: Result<Vec<String>, _> = stmt
-                .query_map([], |row| row.get::<_, String>(0))?
-                .collect();
+            match conn.prepare("SHOW TABLES") {
+                Ok(mut stmt) => {
+                    let table_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                    tables = table_iter.filter_map(Result::ok).collect();
+                    tracing::info!("Found {} tables using SHOW TABLES: {:?}", tables.len(), tables);
+                },
+                Err(e) => {
+                    tracing::warn!("SHOW TABLES failed: {}", e);
 
-            let tables = tables?;
-
-            if tables.is_empty() {
-                tracing::warn!("No tables found in the database during schema refresh");
-
-                // Try SHOW TABLES as a fallback since that worked in diagnostics
-                match conn.prepare("SHOW TABLES") {
-                    Ok(mut show_stmt) => {
-                        let show_tables: Result<Vec<String>, _> = show_stmt
-                            .query_map([], |row| row.get::<_, String>(0))
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
-                            .collect();
-
-                        match show_tables {
-                            Ok(show_tables) => {
-                                tracing::info!("SHOW TABLES found {} tables: {:?}", show_tables.len(), show_tables);
-                                if !show_tables.is_empty() {
-                                    // Use these tables instead
-                                    tracing::info!("Using tables from SHOW TABLES command");
-                                    for table in &show_tables {
-                                        schemas.push(format!("CREATE TABLE \"{}\" (placeholder VARCHAR);", table));
-                                    }
-                                    // Skip further processing
-                                    let mut schemas_lock = self.schemas.write().await;
-                                    *schemas_lock = schemas;
-                                    tracing::info!("Schema refresh complete using SHOW TABLES, found {} schemas", schemas_lock.len());
-                                    return Ok(());
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!("Error collecting SHOW TABLES results: {}", e);
-                            }
+                    // Fall back to sqlite_master
+                    match conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'") {
+                        Ok(mut stmt) => {
+                            let table_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                            tables = table_iter.filter_map(Result::ok).collect();
+                            tracing::info!("Found {} tables using sqlite_master: {:?}", tables.len(), tables);
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to get tables from sqlite_master: {}", e);
+                            return Ok(Vec::new());
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Error preparing SHOW TABLES: {}", e);
-                    }
                 }
-            } else {
-                tracing::info!("Found {} tables during schema refresh: {:?}", tables.len(), tables);
             }
 
             // Process each table to build schema DDL
             for table in tables {
                 tracing::info!("Processing table schema for: {}", table);
 
-                // Simplified approach - just create a basic CREATE TABLE statement
-                // since we had issues with PRAGMA table_info
-                let mut ddl = format!("CREATE TABLE \"{}\" (\n", table);
+                // Get column info using a direct query
+                let mut create_table = format!("CREATE TABLE \"{}\" (\n", table);
+                let columns = match conn.prepare(&format!("PRAGMA table_info(\"{}\")", table)) {
+                    Ok(mut stmt) => {
+                        let cols = stmt.query_map([], |row| {
+                            Ok((
+                                row.get::<_, String>(1)?, // name
+                                row.get::<_, String>(2)?, // type
+                                row.get::<_, i32>(3)? != 0 // notnull
+                            ))
+                        })?;
 
-                // Try to get column info using a SELECT * LIMIT 0
-                match conn.prepare(&format!("SELECT * FROM \"{}\" LIMIT 0", table)) {
-                    Ok(stmt) => {
-                        let column_count = stmt.column_count();
-                        tracing::info!("Table {} has {} columns", table, column_count);
-
-                        for i in 0..column_count {
-                            let column_name = stmt.column_name(i).map_or("unknown", |s| s);
-                            let column_type = "VARCHAR"; // Default to VARCHAR
-
-                            ddl.push_str(&format!("    \"{}\" {}", column_name, column_type));
-
-                            if i < column_count - 1 {
-                                ddl.push_str(",\n");
-                            } else {
-                                ddl.push_str("\n");
-                            }
-                        }
-
-                        ddl.push_str(");");
-                        schemas.push(ddl.clone());
-                        tracing::info!("Added schema: {}", ddl);
+                        cols.filter_map(Result::ok).collect::<Vec<_>>()
                     },
                     Err(e) => {
-                        tracing::error!("Failed to get column info for table {}: {}", table, e);
-                        // Still create a basic schema
-                        ddl.push_str("    placeholder VARCHAR\n);");
-                        schemas.push(ddl.clone());
-                        tracing::info!("Added placeholder schema: {}", ddl);
+                        tracing::warn!("Failed to get column info for {}: {}", table, e);
+
+                        // Fallback to SELECT * LIMIT 0 to at least get column names
+                        match conn.prepare(&format!("SELECT * FROM \"{}\" LIMIT 0", table)) {
+                            Ok(stmt) => {
+                                let column_count = stmt.column_count();
+                                let mut cols = Vec::new();
+
+                                for i in 0..column_count {
+                                    // Fix: column_name returns a Result, not an Option
+                                    match stmt.column_name(i) {
+                                        Ok(name) => {
+                                            // Default all types to VARCHAR when we can't determine
+                                            cols.push((name.to_string(), "VARCHAR".to_string(), false));
+                                        },
+                                        Err(e) => {
+                                            tracing::warn!("Error getting column name at index {}: {}", i, e);
+                                            // Use a placeholder name for this column
+                                            cols.push((format!("column_{}", i), "VARCHAR".to_string(), false));
+                                        }
+                                    }
+                                }
+
+                                cols
+                            },
+                            Err(e) => {
+                                tracing::error!("Failed to get any column info for {}: {}", table, e);
+                                // Create a placeholder column
+                                vec![("id".to_string(), "INTEGER".to_string(), false)]
+                            }
+                        }
+                    }
+                };
+
+                // Generate column definitions
+                for (i, (name, data_type, not_null)) in columns.iter().enumerate() {
+                    let null_str = if *not_null { " NOT NULL" } else { "" };
+                    create_table.push_str(&format!("    \"{}\" {}{}", name, data_type, null_str));
+
+                    if i < columns.len() - 1 {
+                        create_table.push_str(",\n");
+                    } else {
+                        create_table.push_str("\n");
                     }
                 }
+
+                create_table.push_str(");");
+                schemas.push(create_table);
+
+                tracing::info!("Added schema for table {}: {} columns", table, columns.len());
             }
 
-            schemas
-        };
+            Ok(schemas)
+        }).await??;
 
         // Now update the schemas with a single async operation
         let mut schemas_lock = self.schemas.write().await;

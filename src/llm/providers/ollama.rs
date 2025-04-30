@@ -10,16 +10,27 @@ pub struct OllamaProvider {
     model: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct OllamaRequest {
     model: String,
     prompt: String,
     temperature: f32,
+    stream: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct OllamaResponse {
     response: String,
+    // Add other fields that might be in the response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    done: Option<bool>,
+    // Use serde to ignore unknown fields
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl OllamaProvider {
@@ -60,7 +71,7 @@ Based on your instructions, here is the SQL query I have generated to answer the
             question, schema, question
         );
 
-        debug!("Prepared LLM prompt: {}", prompt);
+        info!("Prepared LLM prompt: {}", prompt);
         prompt
     }
 }
@@ -77,7 +88,11 @@ impl SqlGenerator for OllamaProvider {
             model: self.model.clone(),
             prompt,
             temperature: 0.1,
+            stream: false, // Explicitly disable streaming
         };
+
+        // Log the request for debugging
+        debug!("Sending request to Ollama: {:?}", request);
 
         let response = self
             .client
@@ -88,20 +103,40 @@ impl SqlGenerator for OllamaProvider {
             .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
 
         if !response.status().is_success() {
-            error!("Ollama API responded with status code: {}", response.status());
+            let status = response.status();
+            // Try to get the error message from the response body
+            let error_body = match response.text().await {
+                Ok(body) => format!(" - Response body: {}", body),
+                Err(_) => String::new(),
+            };
+
+            error!("Ollama API responded with status code: {}{}", status, error_body);
             return Err(LlmError::ResponseError(format!(
-                "Ollama API responded with status code: {}",
-                response.status()
+                "Ollama API responded with status code: {}{}",
+                status, error_body
             )));
         }
 
-        let ollama_response: OllamaResponse = response
-            .json()
-            .await
-            .map_err(|e| LlmError::ResponseError(e.to_string()))?;
+        // Get the raw text response first for diagnostics
+        let response_text = response.text().await
+            .map_err(|e| LlmError::ResponseError(format!("Failed to read response body: {}", e)))?;
+
+        debug!("Raw response from Ollama: {}", response_text);
+
+        // Parse the JSON response
+        let ollama_response = match serde_json::from_str::<OllamaResponse>(&response_text) {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("Failed to parse Ollama response: {} - Response was: {}", e, response_text);
+                return Err(LlmError::ResponseError(format!(
+                    "Failed to parse Ollama response: {} - Response was: {}",
+                    e, response_text
+                )));
+            }
+        };
 
         let content = ollama_response.response;
-        debug!("Received raw response from Ollama: {}", content);
+        debug!("Extracted response from Ollama: {}", content);
 
         // Extract SQL from the response
         if let Some(start) = content.find("```sql") {
