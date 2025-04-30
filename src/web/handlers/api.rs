@@ -183,6 +183,7 @@ pub async fn nl_query(
     // Get the DB schema
     let schema = state.get_schemas_ddl().await;
     if schema.is_empty() {
+        error!("No database schema available. Please upload some data first.");
         return Err((
             StatusCode::BAD_REQUEST,
             "No database schema available. Please upload some data first.".to_string()

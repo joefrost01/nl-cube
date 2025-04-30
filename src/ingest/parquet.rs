@@ -35,6 +35,15 @@ impl ParquetIngestor {
             .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
 
         let column_iter = stmt.query_map([], |row| {
+            // Try to handle the notnull column value which can be bool or int in different DuckDB versions
+            let is_not_null = match row.get::<_, bool>(3) {
+                Ok(value) => value,
+                Err(_) => match row.get::<_, i32>(3) {
+                    Ok(value) => value != 0,
+                    Err(e) => return Err(e)
+                }
+            };
+
             Ok(ColumnSchema {
                 name: row.get(1)?,
                 data_type: match row.get::<_, String>(2)?.to_lowercase().as_str() {
@@ -47,7 +56,7 @@ impl ParquetIngestor {
                     "timestamp" => DataType::Timestamp,
                     other => DataType::Unknown(other.to_string()),
                 },
-                nullable: row.get::<_, i32>(3)? == 0, // 'notnull' column is 0 if nullable
+                nullable: !is_not_null, // If is_not_null is true, then the column is not nullable
             })
         })
             .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
