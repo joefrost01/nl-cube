@@ -38,7 +38,8 @@ impl From<std::io::Error> for IngestError {
 }
 
 pub trait FileIngestor: Send + Sync {
-    fn ingest(&self, path: &Path, table_name: &str) -> Result<schema::TableSchema, IngestError>;
+    // Updated to include subject parameter
+    fn ingest(&self, path: &Path, table_name: &str, subject: &str) -> Result<schema::TableSchema, IngestError>;
 }
 
 pub struct IngestManager {
@@ -64,15 +65,16 @@ impl IngestManager {
         }
     }
 
-    pub fn ingest_file(&self, path: &Path, table_name: &str) -> Result<schema::TableSchema, IngestError> {
+    // Updated to include subject parameter and use schema-based table access
+    pub fn ingest_file(&self, path: &Path, table_name: &str, subject: &str) -> Result<schema::TableSchema, IngestError> {
         let extension = path
             .extension()
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| IngestError::UnsupportedFileType("No extension".to_string()))?;
 
         match extension.to_lowercase().as_str() {
-            "csv" => self.csv_ingestor.ingest(path, table_name),
-            "parquet" => self.parquet_ingestor.ingest(path, table_name),
+            "csv" => self.csv_ingestor.ingest(path, table_name, subject),
+            "parquet" => self.parquet_ingestor.ingest(path, table_name, subject),
             _ => Err(IngestError::UnsupportedFileType(extension.to_string())),
         }
     }

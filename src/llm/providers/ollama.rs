@@ -53,16 +53,25 @@ impl OllamaProvider {
         let prompt = format!(
             r#"
 ### Instructions:
-Your task is to convert a question into a SQL query, given a database schema.
+Your task is to convert a question into a SQL query for DuckDB, given a database schema.
 Adhere to these rules:
+- **Be careful with column names - they are case sensitive**
+- **Use the exact spelling of column names as provided in the schema**
 - **Deliberately go through the question and database schema word by word** to appropriately answer the question
 - **Use Table Aliases** to prevent ambiguity. For example, `SELECT table1.col1, table2.col1 FROM table1 JOIN table2 ON table1.id = table2.id`.
 - When creating a ratio, always cast the numerator as float
 
 ### Input:
 Generate a SQL query that answers the question `{}`.
-This query will run on a database whose schema is represented in this string:
+This query will run on a DuckDB database with the following tables and columns:
+
 {}
+
+### Expected SQL Format:
+- Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)
+- Reference column names exactly as shown in the schema
+- Make sure to use double quotes around column names with spaces or special characters
+- End your query with a semicolon
 
 ### Response:
 Based on your instructions, here is the SQL query I have generated to answer the question `{}`:
@@ -73,6 +82,74 @@ Based on your instructions, here is the SQL query I have generated to answer the
 
         info!("Prepared LLM prompt: {}", prompt);
         prompt
+    }
+
+    fn extract_sql(&self, content: &str) -> String {
+        // Try to extract SQL from between ```sql and ``` markers
+        if let Some(start) = content.find("```sql") {
+            if let Some(end) = content.rfind("```") {
+                let sql = &content[start + 6..end].trim();
+                info!("Successfully extracted SQL from Ollama response using code block markers");
+                debug!("Extracted SQL: {}", sql);
+                return sql.to_string();
+            }
+        }
+
+        // Try alternate syntax without a language specifier: ``` and ```
+        if let Some(start) = content.find("```") {
+            let content_after_first = &content[start + 3..];
+            if let Some(end) = content_after_first.find("```") {
+                let sql = &content_after_first[..end].trim();
+                info!("Successfully extracted SQL using simple code block markers");
+                debug!("Extracted SQL: {}", sql);
+                return sql.to_string();
+            }
+        }
+
+        // If we couldn't find explicit code blocks, try to extract SQL statements directly
+        // Look for a line starting with SELECT, WITH, or another SQL keyword
+        let sql_keywords = ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"];
+        let lines: Vec<&str> = content.lines().collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim().to_uppercase();
+            if sql_keywords.iter().any(|kw| trimmed.starts_with(kw)) {
+                // Found a line that looks like SQL - now collect until we find the end
+                let mut sql = line.trim().to_string();
+
+                // Collect subsequent lines that appear to be part of the SQL
+                for j in (i+1)..lines.len() {
+                    let next_line = lines[j].trim();
+
+                    // Stop if we hit a markdown code block end
+                    if next_line == "```" {
+                        break;
+                    }
+
+                    // Stop if we hit another code block start
+                    if next_line.starts_with("```") {
+                        break;
+                    }
+
+                    // Add the line to our SQL
+                    sql.push(' ');
+                    sql.push_str(next_line);
+
+                    // Stop if we reach the end of the statement (semicolon)
+                    if next_line.ends_with(";") {
+                        break;
+                    }
+                }
+
+                info!("Extracted SQL using line scanning");
+                debug!("Extracted SQL: {}", sql);
+                return sql;
+            }
+        }
+
+        // If still no SQL found, return the content as-is with a warning
+        info!("Could not extract SQL using usual methods, returning full content");
+        content.to_string()
     }
 }
 
@@ -138,48 +215,14 @@ impl SqlGenerator for OllamaProvider {
         let content = ollama_response.response;
         debug!("Extracted response from Ollama: {}", content);
 
-        // Extract SQL from the response
-        if let Some(start) = content.find("```sql") {
-            if let Some(end) = content.rfind("```") {
-                let sql = &content[start + 6..end].trim();
-                info!("Successfully extracted SQL from Ollama response");
-                debug!("Extracted SQL: {}", sql);
-                return Ok(sql.to_string());
-            }
+        // Use our improved SQL extraction method
+        let sql = self.extract_sql(&content);
+
+        // Ensure we don't return empty SQL
+        if sql.trim().is_empty() {
+            return Err(LlmError::ResponseError("Failed to extract valid SQL from response".to_string()));
         }
 
-        // If we couldn't find explicit SQL code block, look for SQL statement patterns
-        if content.to_lowercase().contains("select") &&
-            (content.to_lowercase().contains("from") || content.to_lowercase().contains("where")) {
-            // Try to extract SQL from plain text using heuristics
-            let lines: Vec<&str> = content.lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty())
-                .collect();
-
-            for (i, line) in lines.iter().enumerate() {
-                if line.to_lowercase().starts_with("select") {
-                    // Found potential SQL start, collect until end
-                    let mut sql = line.to_string();
-                    for j in (i+1)..lines.len() {
-                        sql.push(' ');
-                        sql.push_str(lines[j]);
-
-                        // Stop if we reach a line that looks like the end of SQL
-                        if lines[j].ends_with(";") {
-                            break;
-                        }
-                    }
-
-                    info!("Extracted SQL using heuristics");
-                    debug!("Extracted SQL: {}", sql);
-                    return Ok(sql);
-                }
-            }
-        }
-
-        // If still no SQL found, return the whole content as a last resort
-        info!("No SQL code block found, returning entire response");
-        Ok(content)
+        Ok(sql)
     }
 }
