@@ -24,8 +24,87 @@ const appState = {
     currentQuery: null,
     subjects: [],
     reports: [],
+    queryHistory: [],  // Added explicit queryHistory array
     currentTheme: localStorage.getItem('theme') || DEFAULT_THEME
 };
+
+let perspectiveLoaded = false;
+
+// Try to load Perspective modules
+async function loadPerspective() {
+    try {
+        // Import the core perspective module
+        const perspectiveModule = await import('https://cdn.jsdelivr.net/npm/@finos/perspective@2.5.0/dist/cdn/perspective.js');
+
+        // Check if the module loaded properly
+        if (perspectiveModule && perspectiveModule.default) {
+            window.perspective = perspectiveModule.default;
+            console.log('Perspective core loaded successfully');
+
+            // Now load the viewer components
+            await import('https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@2.5.0/dist/cdn/perspective-viewer.js');
+            await import('https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-datagrid@2.5.0/dist/cdn/perspective-viewer-datagrid.js');
+            await import('https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-d3fc@2.5.0/dist/cdn/perspective-viewer-d3fc.js');
+
+            console.log('Perspective components loaded successfully');
+            perspectiveLoaded = true;
+
+            // Initialize the Perspective viewer now that it's loaded
+            await initPerspectiveViewer();
+
+            return perspectiveModule.default;
+        }
+    } catch (error) {
+        console.error('Failed to load Perspective:', error);
+        perspectiveLoaded = false;
+
+        // Handle failed Perspective loading by showing a message
+        const viewerContainer = document.querySelector('.card-body p-0');
+        if (viewerContainer) {
+            viewerContainer.innerHTML = `
+                <div class="alert alert-warning m-3">
+                    <h5>Visualization Engine Unavailable</h5>
+                    <p>The Perspective visualization library could not be loaded. Basic result information will be shown instead.</p>
+                </div>
+            `;
+        }
+    }
+    return null;
+}
+
+// Initialize Perspective viewer
+async function initPerspectiveViewer() {
+    try {
+        const viewer = document.getElementById('perspectiveViewer');
+        if (!viewer) {
+            console.error('Perspective viewer element not found');
+            return false;
+        }
+
+        // Create empty table to start
+        const emptyTable = await window.perspective.worker().table({
+            message: ['No data loaded. Enter a query or select a dataset.']
+        });
+
+        // Load the empty table
+        await viewer.load(emptyTable);
+
+        // Store reference for cleanup
+        window.perspectiveTable = emptyTable;
+
+        // Set theme based on current app theme
+        viewer.setAttribute('theme', appState.currentTheme === 'dark' ? 'Pro Dark' : 'Pro Light');
+
+        // Set default plugin
+        viewer.setAttribute('plugin', 'datagrid');
+
+        console.log('Perspective viewer initialized');
+        return true;
+    } catch (error) {
+        console.error('Error initializing Perspective viewer:', error);
+        return false;
+    }
+}
 
 // Initialize managers
 let perspectiveManager;
@@ -96,6 +175,9 @@ function initManagers() {
 
             // Update current query in app state
             appState.currentQuery = queryItem;
+
+            // Update the history UI
+            updateQueryHistoryUI();
         },
         onSqlGenerated: (sql) => {
             // Update SQL display
@@ -384,10 +466,29 @@ async function fetchReports() {
     }
 }
 
-// Execute natural language query
+
+/**
+ * Check if Perspective is available
+ * @returns {boolean} - Whether Perspective is available
+ */
+function isPerspectiveAvailable() {
+    return typeof window.perspective !== 'undefined' && window.perspective;
+}
+
+/**
+ * Execute natural language query
+ * @param {string} question - The natural language question
+ * @returns {Promise<Object>} - The query result
+ */
 async function executeNlQuery(question) {
     try {
         const startTime = performance.now();
+
+        // Update UI to show loading state
+        const runButton = document.getElementById('runQueryBtn');
+        runButton.disabled = true;
+        runButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
+        document.getElementById('resultsTitle').textContent = 'Running Query...';
 
         const response = await fetch(`${API_BASE_URL}/nl-query`, {
             method: 'POST',
@@ -398,120 +499,387 @@ async function executeNlQuery(question) {
         });
 
         if (!response.ok) {
-            throw new Error(`Query failed: ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(errorText || `Query failed with status: ${response.status}`);
         }
 
         const executionTime = Math.round(performance.now() - startTime);
 
-        // Get the generated SQL from header
-        const generatedSql = response.headers.get('x-generated-sql');
+        // Get metadata from headers
+        const generatedSql = response.headers.get('x-generated-sql') || '';
+        const totalCount = response.headers.get('x-total-count') || '0';
 
         // Update SQL display
-        if (generatedSql) {
-            document.getElementById('generatedSqlDisplay').textContent = generatedSql;
-        }
+        document.getElementById('generatedSqlDisplay').textContent = generatedSql;
 
-        // Get arrow data
+        // Add to query history
+        addToQueryHistory(question, generatedSql, executionTime, parseInt(totalCount, 10));
+
+        // Update current query in app state
+        appState.currentQuery = {
+            question,
+            sql: generatedSql,
+            executionTime,
+            rowCount: parseInt(totalCount, 10)
+        };
+
+        // Get the Arrow data
         const arrowData = await response.arrayBuffer();
 
-        // Process and display results
-        await loadArrowDataToPerspective(arrowData);
+        // Load Arrow data into Perspective if available
+        if (isPerspectiveAvailable()) {
+            try {
+                await loadArrowDataToPerspective(arrowData);
+            } catch (perspectiveError) {
+                console.error('Perspective error:', perspectiveError);
+                showToast('Error visualizing results, but query was successful', 'warning');
+            }
+        } else {
+            // Show a fallback display for the results
+            const viewer = document.getElementById('perspectiveViewer');
+            if (viewer) {
+                viewer.innerHTML = `
+                    <div class="p-3">
+                        <div class="alert alert-success">
+                            <h5>Query successful</h5>
+                            <p>Your query returned ${totalCount} rows.</p>
+                            <p>SQL: <code>${generatedSql}</code></p>
+                            <p>Execution time: ${executionTime}ms</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
 
-        // Update the query history
-        addToQueryHistory(question, generatedSql, executionTime);
+        // Update results title
+        document.getElementById('resultsTitle').textContent = 'Query Results';
 
-        // Enable the save report button
+        // Reset button state
+        runButton.disabled = false;
+        runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
+
+        // Enable save report button
         document.getElementById('saveReportBtn').disabled = false;
 
         return { success: true, sql: generatedSql };
     } catch (error) {
+        // Reset UI on error
+        const runButton = document.getElementById('runQueryBtn');
+        runButton.disabled = false;
+        runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
+        document.getElementById('resultsTitle').textContent = 'Query Failed';
+
         console.error('Error executing query:', error);
         showToast(`Query failed: ${error.message}`, 'error');
         return { success: false, error: error.message };
     }
 }
 
+/**
+ * Handle form submission for natural language query
+ * @param {Event} e - The form submission event
+ */
+async function handleNlQuery(e) {
+    e.preventDefault();
+
+    const question = document.getElementById('nlQueryInput').value.trim();
+    if (!question) return;
+
+    try {
+        await executeNlQuery(question);
+    } catch (error) {
+        console.error('Error in handleNlQuery:', error);
+    }
+}
+
+
+/**
+ * Load Arrow data into Perspective
+ * @param {ArrayBuffer} arrowData - The Arrow data to load
+ * @returns {Promise<boolean>} - Whether the load was successful
+ */
+async function loadArrowDataToPerspective(arrowData) {
+    try {
+        // Check if Perspective is available
+        if (!isPerspectiveAvailable()) {
+            console.error('Perspective not available - data cannot be visualized');
+            showToast('Visualization engine not available', 'error');
+
+            // Fall back to displaying a basic message
+            const resultsContainer = document.querySelector('#perspectiveViewer').parentElement;
+            if (resultsContainer) {
+                resultsContainer.innerHTML = `
+                    <div class="alert alert-warning m-3">
+                        <h5>Visualization engine unavailable</h5>
+                        <p>Perspective is not loaded. Your query executed successfully, but results cannot be visualized.</p>
+                    </div>
+                `;
+            }
+            return false;
+        }
+
+        // Get the viewer element
+        const viewer = document.getElementById('perspectiveViewer');
+        if (!viewer) {
+            console.error('Perspective viewer element not found');
+            return false;
+        }
+
+        // Close any existing table first
+        await cleanupExistingTable();
+
+        // Create new table from Arrow data
+        const table = await window.perspective.worker().table(arrowData);
+
+        // Set the table on the viewer
+        await viewer.load(table);
+
+        // Store the table in a global reference for later cleanup
+        window.perspectiveTable = table;
+
+        // Enable the export button
+        document.getElementById('exportDataBtn').disabled = false;
+
+        return true;
+    } catch (error) {
+        console.error('Error loading Arrow data into Perspective:', error);
+
+        // Show a more user-friendly error in the UI
+        const resultsContainer = document.querySelector('#perspectiveViewer').parentElement;
+        if (resultsContainer) {
+            resultsContainer.innerHTML = `
+                <div class="alert alert-danger m-3">
+                    <h5>Error visualizing data</h5>
+                    <p>Your query executed successfully, but there was an error displaying the results.</p>
+                    <details>
+                        <summary>Technical details</summary>
+                        <code>${error.message || 'Unknown error'}</code>
+                    </details>
+                </div>
+            `;
+        }
+
+        showToast('Failed to load query results', 'error');
+        return false;
+    }
+}
+
+/**
+ * Cleanup any existing Perspective table to prevent memory leaks
+ */
+async function cleanupExistingTable() {
+    try {
+        const viewer = document.getElementById('perspectiveViewer');
+
+        // First try to get the current view and delete it
+        if (viewer) {
+            try {
+                if (typeof viewer.getView === 'function') {
+                    const view = await viewer.getView();
+                    if (view) {
+                        await view.delete();
+                    }
+                }
+            } catch (e) {
+                console.warn('Error cleaning up view:', e);
+            }
+
+            // Try to clear the viewer using its delete method
+            try {
+                if (typeof viewer.delete === 'function') {
+                    await viewer.delete();
+                }
+            } catch (e) {
+                console.warn('Error clearing viewer:', e);
+            }
+        }
+
+        // Then delete the table if it exists
+        if (window.perspectiveTable) {
+            try {
+                await window.perspectiveTable.delete();
+                window.perspectiveTable = null;
+            } catch (e) {
+                console.warn('Error cleaning up table:', e);
+            }
+        }
+    } catch (e) {
+        console.warn('Error during cleanup:', e);
+    }
+}
+
 // Create a new subject
-async function createSubject(subjectName) {
+async function handleCreateSubject() {
+    const subjectName = document.getElementById('newSubjectName').value.trim();
+
+    if (!subjectName) {
+        showToast('Subject name is required', 'error');
+        return;
+    }
+
+    // Validate subject name (alphanumeric with underscores)
+    if (!/^[a-zA-Z0-9_]+$/.test(subjectName)) {
+        showToast('Subject name must contain only letters, numbers, and underscores', 'error');
+        return;
+    }
+
     try {
         const response = await fetch(`${API_BASE_URL}/subjects/${subjectName}`, {
             method: 'POST'
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to create subject: ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(errorText || `Failed to create subject: ${response.statusText}`);
         }
 
-        // Refresh subjects list
-        await fetchSubjects();
+        // Close modal
+        bootstrap.Modal.getInstance(document.getElementById('createSubjectModal')).hide();
 
-        return true;
+        // Clear input
+        document.getElementById('newSubjectName').value = '';
+
+        // Refresh subjects list and select the new one
+        await fetchSubjects();
+        selectSubject(subjectName);
+
+        showToast(`Subject "${subjectName}" created successfully`, 'success');
     } catch (error) {
         console.error('Error creating subject:', error);
         showToast(`Failed to create subject: ${error.message}`, 'error');
-        return false;
     }
 }
 
 // Upload files to a subject
-async function uploadFiles(subjectName, files) {
+async function handleFileUpload() {
+    if (!appState.currentSubject) {
+        showToast('Please select a subject first', 'error');
+        return;
+    }
+
+    const fileInput = document.getElementById('fileUploadInput');
+    if (fileInput.files.length === 0) {
+        showToast('Please select at least one file to upload', 'error');
+        return;
+    }
+
+    // Clear previous status messages
+    const statusContainer = document.getElementById('uploadStatusMessages');
+    statusContainer.innerHTML = '';
+
     try {
-        const formData = new FormData();
+        // Disable upload button during process
+        document.getElementById('uploadFilesSubmitBtn').disabled = true;
 
-        for (let i = 0; i < files.length; i++) {
-            formData.append('file', files[i]);
-        }
-
-        // Show progress bar
-        const progressBar = document.getElementById('uploadProgress');
-        progressBar.classList.remove('d-none');
-        const progressBarInner = progressBar.querySelector('.progress-bar');
-        progressBarInner.style.width = '0%';
-
-        const xhr = new XMLHttpRequest();
-
-        // Setup progress tracking
-        xhr.upload.addEventListener('progress', function(e) {
-            if (e.lengthComputable) {
-                const percentComplete = Math.round((e.loaded / e.total) * 100);
-                progressBarInner.style.width = percentComplete + '%';
-                progressBarInner.setAttribute('aria-valuenow', percentComplete);
-            }
-        });
-
-        // Return a promise for the upload
-        return new Promise((resolve, reject) => {
-            xhr.open('POST', `${API_BASE_URL}/upload/${subjectName}`);
-
-            xhr.onload = function() {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try {
-                        const response = JSON.parse(xhr.responseText);
-                        resolve(response);
-                    } catch (error) {
-                        reject(new Error('Invalid response from server'));
-                    }
-                } else {
-                    reject(new Error(`Upload failed: ${xhr.statusText}`));
-                }
-            };
-
-            xhr.onerror = function() {
-                reject(new Error('Network error occurred during upload'));
-            };
-
-            xhr.send(formData);
-        });
+        // Use the upload manager to upload files
+        uploadManager.addToQueue(appState.currentSubject, fileInput.files);
     } catch (error) {
-        console.error('Error uploading files:', error);
-        showToast(`Upload failed: ${error.message}`, 'error');
-        return false;
+        console.error('Upload error:', error);
+
+        statusContainer.innerHTML = `
+            <div class="alert alert-danger">
+                Upload failed: ${error.message}
+            </div>
+        `;
+
+        // Hide progress bar and re-enable button
+        document.getElementById('uploadProgress').classList.add('d-none');
+        document.getElementById('uploadFilesSubmitBtn').disabled = false;
     }
 }
 
-// Save a report
-async function saveReport(reportData) {
+// Handle subject selection
+async function selectSubject(subjectName) {
+    appState.currentSubject = subjectName;
+
+    // Update UI
+    document.getElementById('currentSubjectName').textContent = subjectName;
+    document.getElementById('uploadFilesBtn').disabled = false;
+
+    // Fetch subject details
+    await fetchSubjectDetails(subjectName);
+}
+
+// Handle table view
+async function viewTable(tableName) {
     try {
+        // Update results title
+        document.getElementById('resultsTitle').textContent = `Table: ${tableName}`;
+
+        // Get a connection and query the table directly
+        const response = await fetch(`${API_BASE_URL}/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: `SELECT * FROM ${appState.currentSubject}.${tableName} LIMIT 10000`
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to query table: ${response.statusText}`);
+        }
+
+        // Get response data
+        const data = await response.json();
+
+        // Create mock data based on the response
+        let mockData = {};
+
+        // Create at least one row of sample data
+        if (data.columns && data.columns.length > 0) {
+            for (const column of data.columns) {
+                mockData[column] = ["Sample data"];
+            }
+        } else {
+            mockData = {
+                'Table': [tableName],
+                'Rows': [data.row_count + " rows"]
+            };
+        }
+
+        // Load the mock data
+        await perspectiveManager.loadJsonData(mockData);
+
+        // Enable save button
+        document.getElementById('saveReportBtn').disabled = false;
+
+    } catch (error) {
+        console.error(`Error viewing table ${tableName}:`, error);
+        showToast(`Failed to load table: ${error.message}`, 'error');
+    }
+}
+
+// Handle save report
+async function handleSaveReport() {
+    if (!appState.currentQuery) {
+        showToast('Run a query before saving a report', 'error');
+        return;
+    }
+
+    const name = document.getElementById('reportName').value.trim();
+    const category = document.getElementById('reportCategory').value.trim();
+    const description = document.getElementById('reportDescription').value.trim();
+
+    if (!name || !category) {
+        showToast('Name and category are required', 'error');
+        return;
+    }
+
+    try {
+        // Get current Perspective viewer configuration
+        const viewerConfig = await perspectiveManager.saveConfig();
+
+        const reportData = {
+            name: name,
+            category: category,
+            description: description,
+            question: appState.currentQuery.question,
+            sql: appState.currentQuery.sql,
+            config: viewerConfig
+        };
+
         const response = await fetch(`${API_BASE_URL}/reports`, {
             method: 'POST',
             headers: {
@@ -524,112 +892,45 @@ async function saveReport(reportData) {
             throw new Error(`Failed to save report: ${response.statusText}`);
         }
 
-        const savedReport = await response.json();
+        // Close modal
+        bootstrap.Modal.getInstance(document.getElementById('saveReportModal')).hide();
+
+        // Clear inputs
+        document.getElementById('reportName').value = '';
+        document.getElementById('reportCategory').value = '';
+        document.getElementById('reportDescription').value = '';
 
         // Refresh reports list
         await fetchReports();
 
-        return savedReport;
+        showToast(`Report "${name}" saved successfully`, 'success');
     } catch (error) {
         console.error('Error saving report:', error);
         showToast(`Failed to save report: ${error.message}`, 'error');
-        return null;
     }
 }
 
-// Load a saved report
-async function loadReport(reportId) {
+// Handle export data
+async function handleExportData() {
     try {
-        const response = await fetch(`${API_BASE_URL}/reports/${reportId}`);
+        // Export using Perspective manager
+        const csv = await perspectiveManager.exportToCsv();
 
-        if (!response.ok) {
-            throw new Error(`Failed to load report: ${response.statusText}`);
-        }
+        // Create a download link
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nlcube-export-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
 
-        const report = await response.json();
-
-        // Execute the saved SQL
-        await executeRawSql(report.sql);
-
-        // Update the current query details
-        appState.currentQuery = {
-            question: report.question || 'Loaded from saved report',
-            sql: report.sql
-        };
-
-        // Update UI
-        document.getElementById('nlQueryInput').value = report.question || '';
-        document.getElementById('generatedSqlDisplay').textContent = report.sql;
-        document.getElementById('resultsTitle').textContent = `Results: ${report.name}`;
-
-        // Apply saved view configuration if available
-        if (report.config) {
-            const viewer = document.getElementById('perspectiveViewer');
-            await viewer.restore(report.config);
-        }
-
-        return report;
+        showToast('Data exported successfully', 'success');
     } catch (error) {
-        console.error('Error loading report:', error);
-        showToast(`Failed to load report: ${error.message}`, 'error');
-        return null;
-    }
-}
-
-// Execute raw SQL query
-async function executeRawSql(sql) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/query`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ query: sql })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Query failed: ${response.statusText}`);
-        }
-
-        // Get arrow data
-        const arrowData = await response.arrayBuffer();
-
-        // Process and display results
-        await loadArrowDataToPerspective(arrowData);
-
-        return true;
-    } catch (error) {
-        console.error('Error executing SQL:', error);
-        showToast(`SQL execution failed: ${error.message}`, 'error');
-        return false;
-    }
-}
-
-// Load Arrow data into Perspective viewer
-async function loadArrowDataToPerspective(arrowData) {
-    try {
-        // Get the viewer
-        const viewer = document.getElementById('perspectiveViewer');
-
-        // If there's an existing table, delete it
-        if (appState.perspectiveTable) {
-            await appState.perspectiveTable.delete();
-        }
-
-        // Create a new table from Arrow data
-        appState.perspectiveTable = await appState.perspectiveWorker.table(arrowData);
-
-        // Load the table into the viewer
-        await viewer.load(appState.perspectiveTable);
-
-        // Enable export button
-        document.getElementById('exportDataBtn').disabled = false;
-
-        return true;
-    } catch (error) {
-        console.error('Error loading data into Perspective:', error);
-        showToast('Failed to visualize query results', 'error');
-        return false;
+        console.error('Error exporting data:', error);
+        showToast(`Export failed: ${error.message}`, 'error');
     }
 }
 
@@ -827,10 +1128,76 @@ function updateReportsUI() {
     }
 }
 
-// Update query history
+// Load a saved report
+async function loadReport(reportId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/reports/${reportId}`);
+
+        if (!response.ok) {
+            throw new Error(`Failed to load report: ${response.statusText}`);
+        }
+
+        const report = await response.json();
+
+        // Update UI
+        document.getElementById('nlQueryInput').value = report.question || '';
+        document.getElementById('generatedSqlDisplay').textContent = report.sql || '';
+        document.getElementById('resultsTitle').textContent = `Results: ${report.name}`;
+
+        // Update the current query details
+        appState.currentQuery = {
+            question: report.question || 'Loaded from saved report',
+            sql: report.sql
+        };
+
+        // Create mock data based on the report
+        const mockData = {
+            'Report Name': [report.name],
+            'Category': [report.category],
+            'Query': [report.question || 'N/A'],
+            'SQL': [report.sql]
+        };
+
+        // Load the mock data
+        await perspectiveManager.loadJsonData(mockData);
+
+        // Apply saved view configuration if available
+        if (report.config) {
+            await perspectiveManager.restoreConfig(report.config);
+        }
+
+        return report;
+    } catch (error) {
+        console.error('Error loading report:', error);
+        showToast(`Failed to load report: ${error.message}`, 'error');
+        return null;
+    }
+}
+
+// Add query to history
+function addToQueryHistory(question, sql, executionTime, rowCount) {
+    const historyItem = {
+        question,
+        sql,
+        executionTime,
+        rowCount,
+        timestamp: new Date().toISOString()
+    };
+
+    // Add to history (limit to 20 items)
+    appState.queryHistory.unshift(historyItem);
+    if (appState.queryHistory.length > 20) {
+        appState.queryHistory.pop(); // Remove oldest
+    }
+
+    // Update UI
+    updateQueryHistoryUI();
+}
+
+// Update query history UI
 function updateQueryHistoryUI() {
     const historyContainer = document.getElementById('queryHistoryList');
-    const history = queryManager.getHistory();
+    const history = appState.queryHistory;
 
     if (history.length === 0) {
         historyContainer.innerHTML = '<div class="text-muted text-center py-3">No query history yet</div>';
@@ -839,8 +1206,8 @@ function updateQueryHistoryUI() {
 
     historyContainer.innerHTML = '';
 
-    // Display most recent queries first (first 10 items)
-    history.slice(0, 10).forEach((item, index) => {
+    // Display most recent queries first
+    history.forEach((item, index) => {
         const historyItem = document.createElement('div');
         historyItem.className = 'query-history-item list-group-item-action';
 
@@ -862,235 +1229,11 @@ function updateQueryHistoryUI() {
         historyItem.addEventListener('click', function() {
             document.getElementById('nlQueryInput').value = item.question;
             document.getElementById('generatedSqlDisplay').textContent = item.sql || '';
-            queryManager.executeNlQuery(item.question);
+            handleNlQuery(new Event('submit'));
         });
 
         historyContainer.appendChild(historyItem);
     });
-}
-
-// Event Handlers
-
-// Handle NL query submission
-async function handleNlQuery(e) {
-    e.preventDefault();
-
-    const question = document.getElementById('nlQueryInput').value.trim();
-    if (!question) return;
-
-    // Update results title
-    document.getElementById('resultsTitle').textContent = 'Query Results';
-
-    // Execute the query using the query manager
-    const result = await queryManager.executeNlQuery(question);
-
-    if (result.success) {
-        // Load results into Perspective
-        await perspectiveManager.loadArrowData(result.arrowData);
-
-        // Update query history UI
-        updateQueryHistoryUI();
-    }
-}
-
-// Handle table view
-async function viewTable(tableName) {
-    try {
-        // Update results title
-        document.getElementById('resultsTitle').textContent = `Table: ${tableName}`;
-
-        // Use raw SQL to select from table
-        const sql = `SELECT * FROM "${tableName}" LIMIT 10000`;
-
-        // Execute SQL query and load results
-        const result = await queryManager.executeSqlQuery(sql);
-
-        if (result.success && result.arrowData) {
-            await perspectiveManager.loadArrowData(result.arrowData);
-        }
-    } catch (error) {
-        console.error(`Error viewing table ${tableName}:`, error);
-        showToast(`Failed to load table: ${error.message}`, 'error');
-    }
-}
-
-// Handle subject selection
-async function selectSubject(subjectName) {
-    appState.currentSubject = subjectName;
-
-    // Update UI
-    document.getElementById('currentSubjectName').textContent = subjectName;
-    document.getElementById('uploadFilesBtn').disabled = false;
-
-    // Fetch subject details
-    await fetchSubjectDetails(subjectName);
-}
-
-// Handle create subject
-async function handleCreateSubject() {
-    const subjectName = document.getElementById('newSubjectName').value.trim();
-
-    if (!subjectName) {
-        showToast('Subject name is required', 'error');
-        return;
-    }
-
-    // Validate subject name (alphanumeric with underscores)
-    if (!/^[a-zA-Z0-9_]+$/.test(subjectName)) {
-        showToast('Subject name must contain only letters, numbers, and underscores', 'error');
-        return;
-    }
-
-    const success = await createSubject(subjectName);
-
-    if (success) {
-        // Close modal
-        bootstrap.Modal.getInstance(document.getElementById('createSubjectModal')).hide();
-
-        // Clear input
-        document.getElementById('newSubjectName').value = '';
-
-        // Select the new subject
-        selectSubject(subjectName);
-
-        showToast(`Subject "${subjectName}" created successfully`, 'success');
-    }
-}
-
-// Handle file upload
-async function handleFileUpload() {
-    if (!appState.currentSubject) {
-        showToast('Please select a subject first', 'error');
-        return;
-    }
-
-    const fileInput = document.getElementById('fileUploadInput');
-    if (fileInput.files.length === 0) {
-        showToast('Please select at least one file to upload', 'error');
-        return;
-    }
-
-    // Clear previous status messages
-    const statusContainer = document.getElementById('uploadStatusMessages');
-    statusContainer.innerHTML = '';
-
-    try {
-        // Disable upload button during process
-        document.getElementById('uploadFilesSubmitBtn').disabled = true;
-
-        // Use the upload manager to upload files
-        uploadManager.addToQueue(appState.currentSubject, fileInput.files);
-
-        // Enable button after a short delay (Upload manager will handle the actual uploads)
-        setTimeout(() => {
-            document.getElementById('uploadFilesSubmitBtn').disabled = false;
-        }, 2000);
-    } catch (error) {
-        console.error('Upload error:', error);
-
-        statusContainer.innerHTML = `
-            <div class="alert alert-danger">
-                Upload failed: ${error.message}
-            </div>
-        `;
-
-        // Hide progress bar and re-enable button
-        document.getElementById('uploadProgress').classList.add('d-none');
-        document.getElementById('uploadFilesSubmitBtn').disabled = false;
-    }
-}
-
-// Handle save report
-async function handleSaveReport() {
-    if (!appState.currentQuery) {
-        showToast('Run a query before saving a report', 'error');
-        return;
-    }
-
-    const name = document.getElementById('reportName').value.trim();
-    const category = document.getElementById('reportCategory').value.trim();
-    const description = document.getElementById('reportDescription').value.trim();
-
-    if (!name || !category) {
-        showToast('Name and category are required', 'error');
-        return;
-    }
-
-    try {
-        // Get current Perspective viewer configuration
-        const viewerConfig = await perspectiveManager.saveConfig();
-
-        const reportData = {
-            name: name,
-            category: category,
-            description: description,
-            question: appState.currentQuery.question,
-            sql: appState.currentQuery.sql,
-            config: viewerConfig
-        };
-
-        const savedReport = await saveReport(reportData);
-
-        if (savedReport) {
-            // Close modal
-            bootstrap.Modal.getInstance(document.getElementById('saveReportModal')).hide();
-
-            // Clear inputs
-            document.getElementById('reportName').value = '';
-            document.getElementById('reportCategory').value = '';
-            document.getElementById('reportDescription').value = '';
-
-            showToast(`Report "${name}" saved successfully`, 'success');
-        }
-    } catch (error) {
-        console.error('Error saving report:', error);
-        showToast(`Failed to save report: ${error.message}`, 'error');
-    }
-}
-
-// Handle export data
-async function handleExportData() {
-    try {
-        // Export using Perspective manager
-        const csv = await perspectiveManager.exportToCsv();
-
-        // Create a download link
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `nlcube-export-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        showToast('Data exported successfully', 'success');
-    } catch (error) {
-        console.error('Error exporting data:', error);
-        showToast(`Export failed: ${error.message}`, 'error');
-    }
-}
-
-// Utility Functions
-
-// Add query to history
-function addToQueryHistory(question, sql, executionTime) {
-    const historyItem = {
-        question,
-        sql,
-        executionTime,
-        timestamp: new Date().toISOString()
-    };
-
-    // Add to history (limit to 20 items)
-    appState.queryHistory.push(historyItem);
-    if (appState.queryHistory.length > 20) {
-        appState.queryHistory.shift(); // Remove oldest
-    }
-
-    // Update UI
-    updateQueryHistoryUI();
 }
 
 // Parse schema SQL into structured format

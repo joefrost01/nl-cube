@@ -73,9 +73,14 @@ async fn sync_nl_query_handler(
         let _ = tx.send(result);
     });
 
-    // Wait for the result from the channel
-    rx.await.unwrap_or(Err((StatusCode::INTERNAL_SERVER_ERROR,
-                            "Failed to process natural language query".to_string())))
+    // Wait for the result from the channel and convert to appropriate response
+    match rx.await {
+        Ok(result) => result,
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to process natural language query".to_string()
+        ))
+    }
 }
 
 // UI Routes - web interface

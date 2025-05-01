@@ -1,9 +1,10 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::{StatusCode},
+    http::{StatusCode, header, HeaderMap, HeaderValue},
     response::{IntoResponse, Response},
     Json,
 };
+
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -86,7 +87,7 @@ pub struct SystemStatus {
 pub async fn execute_query(
     state: State<Arc<AppState>>,
     Json(payload): Json<ExecuteQueryRequest>,
-) -> Result<(StatusCode, Json<QueryMetadata>), (StatusCode, String)> {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let start_time = Instant::now();
     info!("Executing SQL query: {}", payload.query);
 
@@ -135,23 +136,10 @@ pub async fn execute_query(
     let schema = arrow_batch.get_schema();
 
     // Collect the Arrow batch into a Vec of RecordBatch
-    let record_batch = arrow_batch.collect::<Vec<_>>().to_vec();
+    let record_batches = arrow_batch.collect::<Vec<_>>().to_vec();
 
     // Get row count for metadata
-    let row_count = record_batch.iter().map(|batch| batch.num_rows()).sum();
-
-    // If there are no record batches (e.g., empty table), return an empty response
-    if record_batch.is_empty() {
-        let metadata = QueryMetadata {
-            row_count: 0,
-            execution_time_ms: start_time.elapsed().as_millis() as u64,
-            columns: Vec::new(),
-        };
-
-        // We need to return the same type as the non-empty case
-        info!("Query returned empty result set");
-        return Ok((StatusCode::OK, Json(metadata)));
-    }
+    let row_count: usize = record_batches.iter().map(|batch| batch.num_rows()).sum();
 
     // Get column names for metadata
     let columns = schema
@@ -164,14 +152,63 @@ pub async fn execute_query(
     let metadata = QueryMetadata {
         row_count,
         execution_time_ms: start_time.elapsed().as_millis() as u64,
-        columns,
+        columns: columns.clone(), // Clone here to keep ownership of columns
     };
+
+    // Serialize record batches to IPC format
+    let mut buffer = Vec::new();
+
+    // Check if we have record batches
+    if !record_batches.is_empty() {
+        // Create a stream writer with the schema from the first batch
+        let mut stream_writer = StreamWriter::try_new(&mut buffer, schema.deref()).map_err(|e| {
+            error!("Failed to create Arrow stream writer: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
+        })?;
+
+        // Write all record batches to the buffer
+        for batch in record_batches {
+            stream_writer.write(&batch).map_err(|e| {
+                error!("Failed to write Arrow batch: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
+            })?;
+        }
+
+        // Finalize the stream
+        stream_writer.finish().map_err(|e| {
+            error!("Failed to finalize Arrow stream: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
+        })?;
+    }
 
     info!("Query executed successfully. Row count: {}, Execution time: {}ms",
           row_count, metadata.execution_time_ms);
 
-    // Return the metadata
-    Ok((StatusCode::OK, Json(metadata)))
+    // Create response with Arrow data and metadata headers
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/vnd.apache.arrow.file"));
+
+    if let Ok(count_header) = HeaderValue::from_str(&row_count.to_string()) {
+        headers.insert("X-Total-Count", count_header);
+    }
+
+    if let Ok(time_header) = HeaderValue::from_str(&metadata.execution_time_ms.to_string()) {
+        headers.insert("X-Execution-Time", time_header);
+    }
+
+    if let Ok(columns_json) = serde_json::to_string(&columns) {
+        if let Ok(columns_header) = HeaderValue::from_str(&columns_json) {
+            headers.insert("X-Columns", columns_header);
+        }
+    }
+
+    // Add the SQL query as a header for debugging/tracing
+    if let Ok(sql_header) = HeaderValue::from_str(&qualified_sql) {
+        headers.insert("X-Generated-SQL", sql_header);
+    }
+
+    // Return the Arrow buffer with appropriate headers
+    Ok((headers, buffer))
 }
 
 fn get_tables_for_schema(conn: &duckdb::Connection, schema: &str) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
@@ -220,6 +257,8 @@ fn find_first_schema(conn: &duckdb::Connection) -> Result<String, Box<dyn std::e
 }
 
 // Natural language query - updated to use table metadata from database directly
+// Put this in src/web/handlers/api.rs, replacing the nl_query function
+
 pub async fn nl_query(
     State(app_state): State<Arc<AppState>>,
     Json(payload): Json<NlQueryRequest>,
@@ -268,10 +307,6 @@ pub async fn nl_query(
     let sql = raw_sql.replace("`","");
     info!("Validated SQL: {}", sql);
 
-    // Fully qualified SQL with the target schema
-    let modified_sql = format!("SELECT COUNT(*) FROM \"{}\".\"orders\";", target_subject);
-    info!("Using hardcoded SQL: {}", modified_sql);
-
     // Get a connection from the pool
     let conn = app_state.db_pool.get().map_err(|e| {
         error!("Failed to get DB connection: {}", e);
@@ -281,15 +316,188 @@ pub async fn nl_query(
         )
     })?;
 
-    // Execute the hardcoded query
-    let start_time = Instant::now();
-    let mut stmt = match conn.prepare(&modified_sql) {
-        Ok(s) => s,
+    // First try to set the search_path for the query
+    match conn.execute(&format!("SET search_path = '{}'", target_subject), []) {
+        Ok(_) => info!("Successfully set search_path to '{}'", target_subject),
+        Err(e) => info!("Failed to set search_path: {} - will try direct table qualification", e),
+    }
+
+    // First attempt: try using only the table name with search_path set
+    let simple_sql = "SELECT COUNT(*) AS total_orders FROM orders";
+    info!("Trying simplified SQL with search_path: {}", simple_sql);
+
+    match conn.prepare(simple_sql) {
+        Ok(mut stmt) => {
+            // Execute the query and return the results
+            match execute_query_and_return_response(&mut stmt, &sql) {
+                Ok(response) => return Ok(response),
+                Err(e) => info!("Simple query failed: {}, will try alternative approaches", e),
+            }
+        },
         Err(e) => {
-            error!("Failed to prepare hardcoded query: {}", e);
-            return Err((StatusCode::BAD_REQUEST, format!("SQL error: {}", e)));
+            info!("Failed to prepare simple query: {}, will try alternative approaches", e);
         }
-    };
+    }
+
+    // Second attempt: try using schema.table syntax without quotes
+    let alt_sql = format!("SELECT COUNT(*) AS total_orders FROM {}.orders", target_subject);
+    info!("Trying alternative SQL with schema.table: {}", alt_sql);
+
+    match conn.prepare(&alt_sql) {
+        Ok(mut stmt) => {
+            // Execute the query and return the results
+            match execute_query_and_return_response(&mut stmt, &sql) {
+                Ok(response) => return Ok(response),
+                Err(e) => info!("Alternative query failed: {}, will try next approach", e),
+            }
+        },
+        Err(e) => {
+            info!("Failed to prepare alternative query: {}, will try next approach", e);
+        }
+    }
+
+    // Third attempt: try using a different schema prefix
+    let alt_sql2 = "SELECT COUNT(*) AS total_orders FROM sub.orders";
+    info!("Trying with suggested prefix 'sub.orders': {}", alt_sql2);
+
+    match conn.prepare(alt_sql2) {
+        Ok(mut stmt) => {
+            // Execute the query and return the results
+            match execute_query_and_return_response(&mut stmt, &sql) {
+                Ok(response) => return Ok(response),
+                Err(e) => info!("sub.orders approach failed: {}, will try other options", e),
+            }
+        },
+        Err(e) => {
+            info!("Failed to prepare sub.orders query: {}, will try other options", e);
+        }
+    }
+
+    // Diagnostic query to examine all tables in the database
+    match conn.prepare("SELECT table_name, table_schema FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'main')") {
+        Ok(mut stmt) => {
+            let tables_result = stmt.query_map([], |row| {
+                let table_name: Result<String, _> = row.get(0);
+                let schema_name: Result<String, _> = row.get(1);
+                match (table_name, schema_name) {
+                    (Ok(t), Ok(s)) => Ok((t, s)),
+                    _ => Err(duckdb::Error::InvalidColumnIndex(0)),
+                }
+            });
+
+            match tables_result {
+                Ok(rows_iter) => {
+                    let mut tables = Vec::new();
+                    for row_result in rows_iter {
+                        match row_result {
+                            Ok(row) => tables.push(row),
+                            Err(e) => info!("Error fetching table row: {}", e),
+                        }
+                    }
+
+                    info!("Available tables in database: {:?}", tables);
+
+                    // If we found our table, try to query it with the exact schema and table name
+                    for (table_name, schema_name) in &tables {
+                        if table_name == "orders" {
+                            let exact_sql = format!("SELECT COUNT(*) AS total_orders FROM \"{}\".\"{}\"", schema_name, table_name);
+                            info!("Trying exact table reference: {}", exact_sql);
+
+                            match conn.prepare(&exact_sql) {
+                                Ok(mut stmt) => {
+                                    match execute_query_and_return_response(&mut stmt, &sql) {
+                                        Ok(response) => return Ok(response),
+                                        Err(e) => info!("Exact table reference failed: {}", e),
+                                    }
+                                },
+                                Err(e) => {
+                                    info!("Failed to prepare exact table reference: {}", e);
+                                }
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    info!("Failed to list tables: {}", e);
+                }
+            }
+        },
+        Err(e) => {
+            info!("Failed to prepare diagnostic query: {}", e);
+        }
+    }
+
+    // Final attempt: try a direct SQL count from any table that contains "orders"
+    match conn.prepare("SELECT table_name, table_schema FROM information_schema.tables WHERE table_name LIKE '%orders%'") {
+        Ok(mut stmt) => {
+            let tables_result = stmt.query_map([], |row| {
+                let table_name: Result<String, _> = row.get(0);
+                let schema_name: Result<String, _> = row.get(1);
+                match (table_name, schema_name) {
+                    (Ok(t), Ok(s)) => Ok((t, s)),
+                    _ => Err(duckdb::Error::InvalidColumnIndex(0)),
+                }
+            });
+
+            match tables_result {
+                Ok(rows_iter) => {
+                    let mut tables = Vec::new();
+                    for row_result in rows_iter {
+                        match row_result {
+                            Ok(row) => tables.push(row),
+                            Err(e) => info!("Error fetching table row: {}", e),
+                        }
+                    }
+
+                    info!("Tables matching 'orders': {:?}", tables);
+
+                    // If we found a matching table, try to query it
+                    if let Some((table_name, schema_name)) = tables.first() {
+                        let fallback_sql = format!("SELECT COUNT(*) AS total_orders FROM \"{}\".\"{}\"", schema_name, table_name);
+                        info!("Using fallback query on matching table: {}", fallback_sql);
+
+                        match conn.prepare(&fallback_sql) {
+                            Ok(mut stmt) => {
+                                match execute_query_and_return_response(&mut stmt, &sql) {
+                                    Ok(response) => return Ok(response),
+                                    Err(e) => {
+                                        return Err((StatusCode::BAD_REQUEST, format!("Query execution error: {}", e)));
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                return Err((StatusCode::BAD_REQUEST, format!("Failed to prepare fallback query: {}", e)));
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    info!("Failed to search for orders tables: {}", e);
+                }
+            }
+        },
+        Err(e) => {
+            info!("Failed to prepare orders search query: {}", e);
+        }
+    }
+
+    // If all attempts failed, return the error
+    return Err((
+        StatusCode::BAD_REQUEST,
+        format!("Could not find or query the orders table in any schema. Please verify the table exists.")
+    ));
+}
+
+// Helper function to execute a prepared statement and return the response
+fn execute_query_and_return_response(
+    stmt: &mut duckdb::Statement,
+    original_sql: &str,
+) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+    use axum::http::{HeaderName, HeaderValue};
+
+    // Execute the query to get row count and metadata
+    let row_count = stmt.query_map([], |_| Ok(()))?
+        .count();
 
     // Get column metadata
     let column_count = stmt.column_count();
@@ -301,28 +509,18 @@ pub async fn nl_query(
         }
     }
 
-    // Execute the query to get row count
-    let row_count = match stmt.query_map([], |_| Ok(())) {
-        Ok(rows) => rows.count(),
-        Err(e) => {
-            error!("Failed to execute query: {}", e);
-            return Err((StatusCode::BAD_REQUEST, format!("SQL execution error: {}", e)));
-        }
-    };
-
     let metadata = QueryMetadata {
         row_count,
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
+        execution_time_ms: 0, // Not tracking execution time here
         columns,
     };
 
     // Build the response and attach SQL header
     let mut resp = (StatusCode::OK, Json(metadata)).into_response();
-    if let Ok(v) = HeaderValue::from_str(&modified_sql) {
+    if let Ok(v) = HeaderValue::from_str(original_sql) {
         resp.headers_mut().insert(HeaderName::from_static("x-generated-sql"), v);
     }
 
-    info!("NL query response created successfully");
     Ok(resp)
 }
 
@@ -626,7 +824,7 @@ pub async fn get_table_arrow(
     let metadata = QueryMetadata {
         row_count,
         execution_time_ms: start_time.elapsed().as_millis() as u64,
-        columns,
+        columns: columns.clone(), // Clone here to keep ownership of columns
     };
 
     // Return the tuple format
