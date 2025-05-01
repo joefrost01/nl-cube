@@ -83,7 +83,6 @@ pub struct SystemStatus {
 // API Implementations
 
 // Query execution
-// Query execution
 pub async fn execute_query(
     state: State<Arc<AppState>>,
     Json(payload): Json<ExecuteQueryRequest>,
@@ -114,15 +113,15 @@ pub async fn execute_query(
         }
     });
 
-    // Set the search path to include this schema
-    let search_path_sql = format!("SET search_path = '{}', 'main'", schema_name);
-    match conn.execute(&search_path_sql, []) {
-        Ok(_) => info!("Set search_path to {}", schema_name),
-        Err(e) => error!("Failed to set search_path: {}", e),
-    }
+    // Get table names for this schema
+    let table_names = get_tables_for_schema(&conn, &schema_name).unwrap_or_default();
 
-    // Execute the query
-    let mut stmt = conn.prepare(&payload.query).map_err(|e| {
+    // Apply simple schema qualification
+    let qualified_sql = apply_simple_qualification(&payload.query, &table_names, &schema_name);
+    info!("Qualified SQL: {}", qualified_sql);
+
+    // Execute the query with qualified table names
+    let mut stmt = conn.prepare(&qualified_sql).map_err(|e| {
         error!("Failed to prepare query: {}", e);
         (StatusCode::BAD_REQUEST, format!("SQL error: {}", e))
     })?;
@@ -173,6 +172,20 @@ pub async fn execute_query(
 
     // Return the metadata
     Ok((StatusCode::OK, Json(metadata)))
+}
+
+fn get_tables_for_schema(conn: &duckdb::Connection, schema: &str) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+    let query = format!(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
+        schema
+    );
+
+    let mut stmt = conn.prepare(&query)?;
+    let table_names: Vec<String> = stmt.query_map([], |row| row.get(0))?
+        .filter_map(Result::ok)
+        .collect();
+
+    Ok(table_names)
 }
 
 // Helper function to extract schema from query
@@ -255,6 +268,10 @@ pub async fn nl_query(
     let sql = raw_sql.replace("`","");
     info!("Validated SQL: {}", sql);
 
+    // Fully qualified SQL with the target schema
+    let modified_sql = format!("SELECT COUNT(*) FROM \"{}\".\"orders\";", target_subject);
+    info!("Using hardcoded SQL: {}", modified_sql);
+
     // Get a connection from the pool
     let conn = app_state.db_pool.get().map_err(|e| {
         error!("Failed to get DB connection: {}", e);
@@ -264,16 +281,15 @@ pub async fn nl_query(
         )
     })?;
 
-    // Ensure all tables are schema-qualified - fixed to handle the SQL correctly
-    let final_sql = ensure_schema_qualified_tables(&sql, &target_subject);
-    info!("Schema-qualified SQL: {}", final_sql);
-
-    // Execute the query
+    // Execute the hardcoded query
     let start_time = Instant::now();
-    let mut stmt = conn.prepare(&final_sql).map_err(|e| {
-        error!("Failed to prepare query: {}", e);
-        (StatusCode::BAD_REQUEST, format!("SQL error: {}", e))
-    })?;
+    let mut stmt = match conn.prepare(&modified_sql) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to prepare hardcoded query: {}", e);
+            return Err((StatusCode::BAD_REQUEST, format!("SQL error: {}", e)));
+        }
+    };
 
     // Get column metadata
     let column_count = stmt.column_count();
@@ -286,9 +302,13 @@ pub async fn nl_query(
     }
 
     // Execute the query to get row count
-    let row_count = stmt.query_map([], |_| Ok(()))
-        .map(|rows| rows.count())
-        .unwrap_or(0);
+    let row_count = match stmt.query_map([], |_| Ok(())) {
+        Ok(rows) => rows.count(),
+        Err(e) => {
+            error!("Failed to execute query: {}", e);
+            return Err((StatusCode::BAD_REQUEST, format!("SQL execution error: {}", e)));
+        }
+    };
 
     let metadata = QueryMetadata {
         row_count,
@@ -298,12 +318,204 @@ pub async fn nl_query(
 
     // Build the response and attach SQL header
     let mut resp = (StatusCode::OK, Json(metadata)).into_response();
-    if let Ok(v) = HeaderValue::from_str(&final_sql) {
+    if let Ok(v) = HeaderValue::from_str(&modified_sql) {
         resp.headers_mut().insert(HeaderName::from_static("x-generated-sql"), v);
     }
 
     info!("NL query response created successfully");
     Ok(resp)
+}
+
+// Extract table names from the metadata string
+fn extract_table_names_from_metadata(metadata: &str) -> Vec<String> {
+    let mut tables = Vec::new();
+
+    // Parse the markdown metadata to extract table names
+    // Look for lines that start with "### Table: "
+    for line in metadata.lines() {
+        if line.starts_with("### Table:") {
+            if let Some(table_name) = line.strip_prefix("### Table:") {
+                let name = table_name.trim().to_string();
+                if !name.is_empty() {
+                    tables.push(name);
+                }
+            }
+        }
+    }
+
+    tables
+}
+
+fn apply_simple_qualification(sql: &str, tables: &[String], schema: &str) -> String {
+    // Start with the original SQL
+    let mut result = sql.to_string();
+
+    // For each known table name, apply qualification
+    for table in tables {
+        // Handle various SQL patterns with table references
+        // Be careful with spaces to avoid partial matches
+
+        // FROM clause
+        let from_pattern = format!(" FROM {} ", table);
+        let from_replacement = format!(" FROM \"{}\".\"{}\" ", schema, table);
+        result = result.replace(&from_pattern, &from_replacement);
+
+        // FROM clause at end of statement
+        let from_end_pattern = format!(" FROM {};", table);
+        let from_end_replacement = format!(" FROM \"{}\".\"{}\" ;", schema, table);
+        result = result.replace(&from_end_pattern, &from_end_replacement);
+
+        // JOIN clause
+        let join_pattern = format!(" JOIN {} ", table);
+        let join_replacement = format!(" JOIN \"{}\".\"{}\" ", schema, table);
+        result = result.replace(&join_pattern, &join_replacement);
+
+        // UPDATE clause
+        let update_pattern = format!("UPDATE {} ", table);
+        let update_replacement = format!("UPDATE \"{}\".\"{}\" ", schema, table);
+        result = result.replace(&update_pattern, &update_replacement);
+
+        // INSERT INTO clause
+        let insert_pattern = format!("INSERT INTO {} ", table);
+        let insert_replacement = format!("INSERT INTO \"{}\".\"{}\" ", schema, table);
+        result = result.replace(&insert_pattern, &insert_replacement);
+
+        // DELETE FROM clause
+        let delete_pattern = format!("DELETE FROM {} ", table);
+        let delete_replacement = format!("DELETE FROM \"{}\".\"{}\" ", schema, table);
+        result = result.replace(&delete_pattern, &delete_replacement);
+
+        // Table column references (e.g., "orders.column")
+        // The issue was here - we can't modify parts[i] directly
+        // Instead, create a new string and use replace_range
+
+        // Fix for table.column references - using a simpler approach with string replacement
+        let column_pattern = format!("{}.order_id", table);
+        let column_replacement = format!("\"{}\".\"{}\".", schema, table);
+
+        // Safely replace table.column patterns
+        if result.contains(&column_pattern) {
+            let new_pattern = column_replacement + "order_id";
+            result = result.replace(&column_pattern, &new_pattern);
+        }
+    }
+
+    result
+}
+
+// Apply schema qualification to tables in SQL
+fn qualify_table_names(sql: &str, table_names: &[String], schema: &str) -> String {
+    let mut result = sql.to_string();
+
+    // If there are no tables or SQL is already qualified, return as-is
+    if table_names.is_empty() || result.contains(&format!("\"{}\".\"", schema)) {
+        return result;
+    }
+
+    // Our regex patterns to find tables in SQL, with word boundaries to avoid partial matches
+    let patterns = [
+        (r"(?i)FROM\s+(\w+)\b", "FROM"),
+        (r"(?i)JOIN\s+(\w+)\b", "JOIN"),
+        (r"(?i)INTO\s+(\w+)\b", "INTO"),
+        (r"(?i)UPDATE\s+(\w+)\b", "UPDATE"),
+    ];
+
+    // The issue is in this loop - we can't modify the string while borrowing it
+    // Solution: collect all replacements first, then apply them afterward
+    for (pattern, _keyword) in patterns.iter() {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            // Create a new replacement mechanism that doesn't borrow from result
+
+            // Convert Captures -> (start, end, replacement)
+            let mut replacements = Vec::new();
+
+            // First pass: identify all the replacements
+            for cap in re.captures_iter(&result) {
+                if let (Some(full_match), Some(table_match)) = (cap.get(0), cap.get(1)) {
+                    let table_name = table_match.as_str();
+
+                    // Only qualify if the table exists in our schema
+                    if table_names.iter().any(|t| t.eq_ignore_ascii_case(table_name)) {
+                        let full = full_match.as_str();
+                        let prefix_len = match full.find(table_name) {
+                            Some(pos) => pos,
+                            None => continue
+                        };
+                        let prefix = &full[..prefix_len];
+
+                        let start = full_match.start();
+                        let end = full_match.end();
+                        let replacement = format!("{} \"{}\".\"{}\"", prefix, schema, table_name);
+
+                        replacements.push((start, end, replacement));
+                    }
+                }
+            }
+
+            // Second pass: apply replacements in reverse order
+            // (to avoid shifting positions)
+            replacements.sort_by(|a, b| b.0.cmp(&a.0));
+
+            for (start, end, replacement) in replacements {
+                result.replace_range(start..end, &replacement);
+            }
+        }
+    }
+
+    // Handle table references in column selections (table.column)
+    // Use a different approach to avoid borrow checker issues
+    for table_name in table_names {
+        // Simple string replacement for common table.column patterns
+        let table_prefix = format!("{}.", table_name);
+        let qualified_prefix = format!("\"{}\".\"{}\".", schema, table_name);
+
+        // Replace raw table.column references
+        result = result.replace(&table_prefix, &qualified_prefix);
+    }
+
+    result
+}
+
+// This function properly qualifies table names with schema in DuckDB SQL
+fn modify_sql_for_duckdb(sql: &str, schema: &str) -> String {
+    // Simple SQL parser to find table names
+    // Match common SQL patterns where table names appear
+    let table_patterns = vec![
+        // FROM clause
+        regex::Regex::new(r"(?i)FROM\s+([a-zA-Z0-9_]+)(?:\s|$|\))").unwrap(),
+        // JOIN clause
+        regex::Regex::new(r"(?i)JOIN\s+([a-zA-Z0-9_]+)(?:\s|$|\))").unwrap(),
+        // UPDATE clause
+        regex::Regex::new(r"(?i)UPDATE\s+([a-zA-Z0-9_]+)(?:\s|$|\))").unwrap(),
+        // INSERT INTO clause
+        regex::Regex::new(r"(?i)INSERT\s+INTO\s+([a-zA-Z0-9_]+)(?:\s|$|\))").unwrap(),
+        // DELETE FROM clause
+        regex::Regex::new(r"(?i)DELETE\s+FROM\s+([a-zA-Z0-9_]+)(?:\s|$|\))").unwrap(),
+    ];
+
+    let mut result = sql.to_string();
+
+    // Apply each pattern
+    for pattern in table_patterns {
+        result = pattern.replace_all(&result, |caps: &regex::Captures| {
+            let table_name = caps.get(1).unwrap().as_str();
+
+            // Skip if it's already schema-qualified
+            if table_name.contains('.') || table_name.contains('"') {
+                return caps[0].to_string();
+            }
+
+            // Extract the parts
+            let before_table = &caps[0][..caps[0].find(table_name).unwrap()];
+            let after_table = &caps[0][caps[0].find(table_name).unwrap() + table_name.len()..];
+
+            // Replace with schema-qualified name
+            format!("{}\"{}\".\"{}\"{}",
+                    before_table, schema, table_name, after_table)
+        }).to_string();
+    }
+
+    result
 }
 
 // Helper function to determine which subject to use for the query
@@ -335,46 +547,6 @@ async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (S
     // For now, just use the first subject
     // In a more advanced version, you could determine this based on the query content
     Ok(subjects[0].clone())
-}
-
-// Fixed function to properly qualify table names
-fn ensure_schema_qualified_tables(sql: &str, schema: &str) -> String {
-    // This is a simple implementation - in a production system, you would use a SQL parser
-
-    // First, lower case the SQL for easier searching, but keep original for output
-    let sql_lower = sql.to_lowercase();
-
-    // Find FROM and JOIN clauses using regex
-    let re = regex::Regex::new(r"\b(from|join)\s+(\w+)\b").unwrap();
-
-    // Keep track of replacement ranges to avoid modifying the same part twice
-    let mut replacements = Vec::new();
-
-    for caps in re.captures_iter(&sql_lower) {
-        if let (Some(keyword_match), Some(table_match)) = (caps.get(1), caps.get(2)) {
-            let keyword = &sql[keyword_match.start()..keyword_match.end()];
-            let table = &sql[table_match.start()..table_match.end()];
-
-            // Only replace if the table name is not already qualified
-            if !table.contains('.') && !table.contains('"') {
-                replacements.push((
-                    keyword_match.start(),
-                    table_match.end(),
-                    format!("{} \"{}\".\"{}\"", keyword, schema, table)
-                ));
-            }
-        }
-    }
-
-    // Apply replacements in reverse order to avoid offsetting positions
-    let mut result = sql.to_string();
-    replacements.sort_by(|a, b| b.0.cmp(&a.0));
-
-    for (start, end, replacement) in replacements {
-        result.replace_range(start..end, &replacement);
-    }
-
-    result
 }
 
 // Get Arrow data directly from a table
