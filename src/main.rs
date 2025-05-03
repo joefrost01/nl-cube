@@ -55,10 +55,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create application state
     let app_state = Arc::new(AppState::new(
-         config.clone(),
-         pool,
-         llm_manager,
+        config.clone(),
+        pool,
+        llm_manager,
     ));
+
+    // Initialize schema cache
+    info!("Initializing schema cache");
+    if let Err(e) = app_state.schema_manager.refresh_cache().await {
+        error!("Failed to initialize schema cache: {}", e);
+        // Continue anyway, it will be refreshed later
+    }
+
+    // Initialize subjects
+    info!("Initializing subjects");
+    if let Err(e) = app_state.refresh_subjects().await {
+        error!("Failed to initialize subjects: {}", e);
+        // Continue anyway, it will be refreshed later
+    }
 
     // Start the web server
     info!("Starting NL-Cube server on {}:{}", config.web.host, config.web.port);

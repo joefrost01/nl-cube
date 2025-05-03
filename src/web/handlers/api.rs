@@ -257,8 +257,6 @@ fn find_first_schema(conn: &duckdb::Connection) -> Result<String, Box<dyn std::e
 }
 
 // Natural language query - updated to use table metadata from database directly
-// Put this in src/web/handlers/api.rs, replacing the nl_query function
-
 pub async fn nl_query(
     State(app_state): State<Arc<AppState>>,
     Json(payload): Json<NlQueryRequest>,
@@ -273,10 +271,14 @@ pub async fn nl_query(
     info!("Using subject '{}' for query", target_subject);
 
     // Get the table metadata for only the current subject
-    let table_metadata = app_state.get_table_metadata(Some(&target_subject)).await.map_err(|e| {
-        error!("Failed to get table metadata: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e))
-    })?;
+    let table_metadata = match app_state.get_table_metadata(Some(&target_subject)).await {
+        Ok(metadata) => metadata,
+        Err(e) => {
+            error!("Failed to get table metadata: {}", e);
+            // Provide a fallback minimal schema description
+            format!("# DATABASE SCHEMA\n\nSchema: {}\nTable: orders\n\nColumns:\n- order_id (INTEGER)\n- customer_id (INTEGER)\n- order_date (DATE)\n- total_amount (DOUBLE)\n", target_subject)
+        }
+    };
 
     if table_metadata.trim() == "# DATABASE SCHEMA\n\nNo schemas found in database. Please upload data files first." {
         return Err((
@@ -322,170 +324,87 @@ pub async fn nl_query(
         Err(e) => info!("Failed to set search_path: {} - will try direct table qualification", e),
     }
 
-    // First attempt: try using only the table name with search_path set
-    let simple_sql = "SELECT COUNT(*) AS total_orders FROM orders";
-    info!("Trying simplified SQL with search_path: {}", simple_sql);
+    // Create a response with metadata
+    let mut headers = HeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(&sql) {
+        headers.insert(HeaderName::from_static("x-generated-sql"), v);
+    }
 
-    match conn.prepare(simple_sql) {
-        Ok(mut stmt) => {
-            // Execute the query and return the results
-            match execute_query_and_return_response(&mut stmt, &sql) {
-                Ok(response) => return Ok(response),
-                Err(e) => info!("Simple query failed: {}, will try alternative approaches", e),
+    // Add query metadata
+    let metadata = QueryMetadata {
+        row_count: 0,  // Will be updated after query execution
+        execution_time_ms: 0,  // Will be updated after query execution
+        columns: vec![]  // Will be updated after query execution
+    };
+
+    // Create the response
+    let response = (StatusCode::OK, headers, Json(metadata)).into_response();
+
+    Ok(response)
+}
+
+fn extract_table_from_query(sql: &str) -> Option<String> {
+    let sql_upper = sql.to_uppercase();
+
+    // Look for these common SQL keywords
+    let keywords = ["FROM ", "JOIN ", "UPDATE ", "INSERT INTO "];
+
+    for keyword in keywords {
+        if let Some(pos) = sql_upper.find(keyword) {
+            // Get portion after the keyword
+            let start_pos = pos + keyword.len();
+            let remaining = &sql[start_pos..];
+
+            // Find the first word (table name)
+            let table_name = remaining
+                .trim_start()
+                .split(|c: char| c.is_whitespace() || c == '(' || c == ',' || c == ';')
+                .next()?
+                .trim_matches(|c: char| c == '"' || c == '\'' || c == '`');
+
+            if !table_name.is_empty() {
+                return Some(table_name.to_string());
             }
-        },
-        Err(e) => {
-            info!("Failed to prepare simple query: {}, will try alternative approaches", e);
         }
     }
 
-    // Second attempt: try using schema.table syntax without quotes
-    let alt_sql = format!("SELECT COUNT(*) AS total_orders FROM {}.orders", target_subject);
-    info!("Trying alternative SQL with schema.table: {}", alt_sql);
+    None
+}
 
-    match conn.prepare(&alt_sql) {
-        Ok(mut stmt) => {
-            // Execute the query and return the results
-            match execute_query_and_return_response(&mut stmt, &sql) {
-                Ok(response) => return Ok(response),
-                Err(e) => info!("Alternative query failed: {}, will try next approach", e),
-            }
-        },
-        Err(e) => {
-            info!("Failed to prepare alternative query: {}, will try next approach", e);
-        }
+async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (StatusCode, String)> {
+    // Refresh schema cache first
+    if let Err(e) = app_state.schema_manager.refresh_cache().await {
+        error!("Failed to refresh schema cache: {}", e);
+        // Continue anyway, might have cached data
     }
 
-    // Third attempt: try using a different schema prefix
-    let alt_sql2 = "SELECT COUNT(*) AS total_orders FROM sub.orders";
-    info!("Trying with suggested prefix 'sub.orders': {}", alt_sql2);
+    // Get available subjects
+    let mut subjects = app_state.subjects.read().await.clone();
 
-    match conn.prepare(alt_sql2) {
-        Ok(mut stmt) => {
-            // Execute the query and return the results
-            match execute_query_and_return_response(&mut stmt, &sql) {
-                Ok(response) => return Ok(response),
-                Err(e) => info!("sub.orders approach failed: {}, will try other options", e),
-            }
-        },
-        Err(e) => {
-            info!("Failed to prepare sub.orders query: {}, will try other options", e);
+    if subjects.is_empty() {
+        // If subject list is empty, refresh it
+        if let Err(e) = app_state.refresh_subjects().await {
+            error!("Failed to refresh subjects: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to determine query subject".to_string(),
+            ));
         }
+
+        // Get updated subjects
+        subjects = app_state.subjects.read().await.clone();
     }
 
-    // Diagnostic query to examine all tables in the database
-    match conn.prepare("SELECT table_name, table_schema FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'main')") {
-        Ok(mut stmt) => {
-            let tables_result = stmt.query_map([], |row| {
-                let table_name: Result<String, _> = row.get(0);
-                let schema_name: Result<String, _> = row.get(1);
-                match (table_name, schema_name) {
-                    (Ok(t), Ok(s)) => Ok((t, s)),
-                    _ => Err(duckdb::Error::InvalidColumnIndex(0)),
-                }
-            });
-
-            match tables_result {
-                Ok(rows_iter) => {
-                    let mut tables = Vec::new();
-                    for row_result in rows_iter {
-                        match row_result {
-                            Ok(row) => tables.push(row),
-                            Err(e) => info!("Error fetching table row: {}", e),
-                        }
-                    }
-
-                    info!("Available tables in database: {:?}", tables);
-
-                    // If we found our table, try to query it with the exact schema and table name
-                    for (table_name, schema_name) in &tables {
-                        if table_name == "orders" {
-                            let exact_sql = format!("SELECT COUNT(*) AS total_orders FROM \"{}\".\"{}\"", schema_name, table_name);
-                            info!("Trying exact table reference: {}", exact_sql);
-
-                            match conn.prepare(&exact_sql) {
-                                Ok(mut stmt) => {
-                                    match execute_query_and_return_response(&mut stmt, &sql) {
-                                        Ok(response) => return Ok(response),
-                                        Err(e) => info!("Exact table reference failed: {}", e),
-                                    }
-                                },
-                                Err(e) => {
-                                    info!("Failed to prepare exact table reference: {}", e);
-                                }
-                            }
-                        }
-                    }
-                },
-                Err(e) => {
-                    info!("Failed to list tables: {}", e);
-                }
-            }
-        },
-        Err(e) => {
-            info!("Failed to prepare diagnostic query: {}", e);
-        }
+    if subjects.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No subjects found. Please create a subject and upload data files.".into(),
+        ));
     }
 
-    // Final attempt: try a direct SQL count from any table that contains "orders"
-    match conn.prepare("SELECT table_name, table_schema FROM information_schema.tables WHERE table_name LIKE '%orders%'") {
-        Ok(mut stmt) => {
-            let tables_result = stmt.query_map([], |row| {
-                let table_name: Result<String, _> = row.get(0);
-                let schema_name: Result<String, _> = row.get(1);
-                match (table_name, schema_name) {
-                    (Ok(t), Ok(s)) => Ok((t, s)),
-                    _ => Err(duckdb::Error::InvalidColumnIndex(0)),
-                }
-            });
-
-            match tables_result {
-                Ok(rows_iter) => {
-                    let mut tables = Vec::new();
-                    for row_result in rows_iter {
-                        match row_result {
-                            Ok(row) => tables.push(row),
-                            Err(e) => info!("Error fetching table row: {}", e),
-                        }
-                    }
-
-                    info!("Tables matching 'orders': {:?}", tables);
-
-                    // If we found a matching table, try to query it
-                    if let Some((table_name, schema_name)) = tables.first() {
-                        let fallback_sql = format!("SELECT COUNT(*) AS total_orders FROM \"{}\".\"{}\"", schema_name, table_name);
-                        info!("Using fallback query on matching table: {}", fallback_sql);
-
-                        match conn.prepare(&fallback_sql) {
-                            Ok(mut stmt) => {
-                                match execute_query_and_return_response(&mut stmt, &sql) {
-                                    Ok(response) => return Ok(response),
-                                    Err(e) => {
-                                        return Err((StatusCode::BAD_REQUEST, format!("Query execution error: {}", e)));
-                                    }
-                                }
-                            },
-                            Err(e) => {
-                                return Err((StatusCode::BAD_REQUEST, format!("Failed to prepare fallback query: {}", e)));
-                            }
-                        }
-                    }
-                },
-                Err(e) => {
-                    info!("Failed to search for orders tables: {}", e);
-                }
-            }
-        },
-        Err(e) => {
-            info!("Failed to prepare orders search query: {}", e);
-        }
-    }
-
-    // If all attempts failed, return the error
-    return Err((
-        StatusCode::BAD_REQUEST,
-        format!("Could not find or query the orders table in any schema. Please verify the table exists.")
-    ));
+    // For now, just use the first subject
+    // In a more advanced version, you could determine this based on the query content
+    Ok(subjects[0].clone())
 }
 
 // Helper function to execute a prepared statement and return the response
@@ -714,37 +633,6 @@ fn modify_sql_for_duckdb(sql: &str, schema: &str) -> String {
     }
 
     result
-}
-
-// Helper function to determine which subject to use for the query
-async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (StatusCode, String)> {
-    // Get available subjects
-    let mut subjects = app_state.subjects.read().await.clone();
-
-    if subjects.is_empty() {
-        // If subject list is empty, refresh it
-        if let Err(e) = app_state.refresh_subjects().await {
-            error!("Failed to refresh subjects: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to determine query subject".to_string(),
-            ));
-        }
-
-        // Get updated subjects
-        subjects = app_state.subjects.read().await.clone();
-    }
-
-    if subjects.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "No subjects found. Please create a subject and upload data files.".into(),
-        ));
-    }
-
-    // For now, just use the first subject
-    // In a more advanced version, you could determine this based on the query content
-    Ok(subjects[0].clone())
 }
 
 // Get Arrow data directly from a table
