@@ -16,17 +16,11 @@ pub mod state;
 
 
 use crate::config::WebConfig;
-use axum::http::{HeaderValue, Method, StatusCode};
+use axum::http::{StatusCode};
 use axum::response::{IntoResponse};
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
-use tower::ServiceBuilder;
-use tower_http::compression::CompressionLayer;
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::set_header::SetResponseHeaderLayer;
-use tower_http::trace::TraceLayer;
 use tracing::{info};
 
 use self::routes::api_routes;
@@ -34,11 +28,6 @@ use self::routes::ui_routes;
 use self::state::AppState;
 
 pub async fn run_server(config: WebConfig, app_state: Arc<AppState>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Setup CORS with reasonable defaults
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers(Any);
 
     // Build the router
     let app = Router::new()

@@ -91,36 +91,6 @@ impl IngestManager {
         }
     }
 
-    // Verify that a table was properly ingested
-    pub fn verify_ingestion(&self, subject: &str, table_name: &str) -> Result<bool, IngestError> {
-        // Connect to the database
-        let conn = duckdb::Connection::open(&self.connection_string)
-            .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
-
-        // Set search path to the subject schema
-        let search_path_sql = format!("SET search_path = '{}'", subject);
-        match conn.execute(&search_path_sql, []) {
-            Ok(_) => {
-                tracing::debug!("Set search_path to '{}'", subject);
-            },
-            Err(e) => {
-                tracing::warn!("Failed to set search_path: {} - will use fully qualified names", e);
-            }
-        }
-
-        // Try to query the table using fully qualified name
-        let verify_sql = format!("SELECT COUNT(*) FROM \"{}\".\"{}\"", subject, table_name);
-        match conn.query_row(&verify_sql, [], |row| row.get::<_, i64>(0)) {
-            Ok(count) => {
-                tracing::info!("Verified table {}.{} exists with {} rows", subject, table_name, count);
-                Ok(true)
-            },
-            Err(e) => {
-                tracing::error!("Table verification failed: {}", e);
-                Ok(false)
-            }
-        }
-    }
 }
 
 impl Default for IngestManager {

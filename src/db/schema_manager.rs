@@ -1,14 +1,12 @@
-// src/db/schema_manager.rs
-use crate::db::db_utils::execute_stmt;
 use crate::db::multi_db_pool::MultiDbConnectionManager;
 use crate::db::db_pool::DuckDBConnectionManager;
-use duckdb::{Connection, Result as DuckResult, Statement};
-use r2d2::{Pool, PooledConnection};
+use duckdb::{Connection};
+use r2d2::{Pool};
 use std::sync::Arc;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// A struct to cache and manage database schema information
 pub struct SchemaManager {
@@ -23,16 +21,6 @@ pub struct SchemaManager {
 }
 
 impl SchemaManager {
-    /// Create a new SchemaManager with the standard connection manager
-    pub fn new(db_pool: Pool<DuckDBConnectionManager>) -> Self {
-        Self {
-            db_pool,
-            schema_cache: RwLock::new(HashMap::new()),
-            last_refresh: RwLock::new(chrono::Utc::now()),
-            data_dir: PathBuf::from("data"), // Default data directory
-        }
-    }
-
     /// Create a new SchemaManager with the multi-database connection manager
     pub fn with_multi_db(
         db_pool: Pool<DuckDBConnectionManager>,
@@ -340,94 +328,6 @@ impl SchemaManager {
         }).await??;
 
         Ok(result)
-    }
-
-    pub async fn get_schemas(&self) -> Vec<String> {
-        let cache = self.schema_cache.read().await;
-        cache.keys().cloned().collect()
-    }
-
-    /// Get tables for a specific schema
-    pub async fn get_tables(&self, schema: &str) -> Option<Vec<String>> {
-        let cache = self.schema_cache.read().await;
-        cache.get(schema).cloned()
-    }
-
-    /// Check if a schema exists
-    pub async fn schema_exists(&self, schema: &str) -> bool {
-        let cache = self.schema_cache.read().await;
-        cache.contains_key(schema)
-    }
-
-    /// Check if a table exists in a schema
-    pub async fn table_exists(&self, schema: &str, table: &str) -> bool {
-        let cache = self.schema_cache.read().await;
-        match cache.get(schema) {
-            Some(tables) => tables.contains(&table.to_string()),
-            None => false,
-        }
-    }
-
-    /// Add a schema (create the directory if not exists)
-    pub async fn add_schema(&self, schema: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Create the schema directory
-        let schema_dir = self.data_dir.join(&schema);
-        if !schema_dir.exists() {
-            std::fs::create_dir_all(&schema_dir)?;
-        }
-
-        // Create an empty schema entry in our cache if it doesn't exist
-        let mut cache = self.schema_cache.write().await;
-        if !cache.contains_key(&schema) {
-            cache.insert(schema, Vec::new());
-        }
-
-        Ok(())
-    }
-
-    /// Drop a schema
-    pub async fn drop_schema(&self, schema: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Remove schema directory if it exists
-        let schema_dir = self.data_dir.join(&schema);
-        if schema_dir.exists() {
-            std::fs::remove_dir_all(&schema_dir)?;
-        }
-
-        // Remove from cache
-        let mut cache = self.schema_cache.write().await;
-        cache.remove(&schema);
-
-        Ok(())
-    }
-
-    /// Prepare a fully-qualified SQL query with schema prefix for all table names
-    pub async fn qualify_sql(&self, sql: &str, schema: &str) -> String {
-        let cache = self.schema_cache.read().await;
-        let tables = match cache.get(schema) {
-            Some(t) => t,
-            None => return sql.to_string(), // Return original SQL if schema not found
-        };
-
-        // Replace table names with schema-qualified names
-        let mut result = sql.to_string();
-
-        for table in tables {
-            // Common SQL patterns for table references
-            let patterns = [
-                (format!(" FROM {} ", table), format!(" FROM \"{}\".\"{}\" ", schema, table)),
-                (format!(" JOIN {} ", table), format!(" JOIN \"{}\".\"{}\" ", schema, table)),
-                (format!("{}.order_id", table), format!("\"{}\".\"{}\".", schema, table)),
-                (format!(" UPDATE {} ", table), format!(" UPDATE \"{}\".\"{}\" ", schema, table)),
-                (format!(" INTO {} ", table), format!(" INTO \"{}\".\"{}\" ", schema, table)),
-            ];
-
-            // Apply each pattern
-            for (pattern, replacement) in &patterns {
-                result = result.replace(pattern, replacement);
-            }
-        }
-
-        result
     }
 
 }

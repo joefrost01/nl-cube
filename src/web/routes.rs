@@ -12,7 +12,7 @@ use crate::web::handlers::api::NlQueryRequest;
 use super::handlers;
 use super::static_files::static_handler;
 use super::state::AppState;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 // This is a special handler that spawns a new task to handle file uploads
 // This avoids Send/Sync issues with DuckDB
@@ -27,10 +27,6 @@ async fn sync_upload_handler(
     // Clone state since we need to move it into the new task
     let state_clone = Arc::clone(&state);
     let path_str = path.0.clone();
-
-    // The multipart form can't be moved across thread boundaries
-    // We need to extract the files here before passing to the blocking task
-    let mut file_data: Vec<(String, Vec<u8>)> = Vec::new();
 
     // Process the multipart form in the current thread
     let mut multipart_data = multipart;
@@ -94,7 +90,6 @@ async fn sync_upload_handler(
 }
 
 async fn try_extract_multipart(multipart: &mut Multipart) -> Result<Vec<(String, Vec<u8>)>, Box<dyn std::error::Error + Send + Sync>> {
-    use tracing::error;
 
     let mut files = Vec::new();
 

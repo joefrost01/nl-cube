@@ -18,13 +18,6 @@ impl CsvIngestor {
         }
     }
 
-    pub fn with_sample_size(connection_string: String, sample_size: usize) -> Self {
-        Self {
-            sample_size,
-            connection_string,
-        }
-    }
-
     fn infer_schema(&self, path: &Path) -> Result<TableSchema, IngestError> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
@@ -93,51 +86,6 @@ impl CsvIngestor {
             name: file_stem,
             columns,
         })
-    }
-
-    fn update_schema_from_table(&self, conn: &Connection, table_name: &str, schema: &mut TableSchema) -> Result<(), IngestError> {
-        // Query the pragma table_info to get actual column information
-        let query = format!("PRAGMA table_info(\"{}\")", table_name);
-        let mut stmt = conn.prepare(&query)
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare pragma query: {}", e)))?;
-
-        let columns_result: Result<Vec<ColumnSchema>, _> = stmt.query_map([], |row| {
-            // Column order: cid, name, type, notnull, dflt_value, pk
-            let name: String = row.get(1)?;
-            let type_str: String = row.get(2)?;
-            let not_null: bool = row.get::<_, i32>(3)? != 0;
-
-            let data_type = match type_str.to_lowercase().as_str() {
-                "integer" => DataType::Integer,
-                "bigint" => DataType::BigInt,
-                "double" => DataType::Double,
-                "varchar" | "text" => DataType::String,
-                "boolean" => DataType::Boolean,
-                "date" => DataType::Date,
-                "timestamp" => DataType::Timestamp,
-                other => DataType::Unknown(other.to_string()),
-            };
-
-            Ok(ColumnSchema {
-                name,
-                data_type,
-                nullable: !not_null,
-            })
-        })
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to query column info: {}", e)))?
-            .collect();
-
-        match columns_result {
-            Ok(columns) => {
-                if !columns.is_empty() {
-                    schema.columns = columns;
-                }
-                Ok(())
-            },
-            Err(e) => {
-                Err(IngestError::DatabaseError(format!("Failed to collect column info: {}", e)))
-            }
-        }
     }
 }
 

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 /// Shared application state for the web server
 pub struct AppState {
@@ -482,11 +482,4 @@ impl AppState {
         Ok(table_metadata)
     }
 
-    pub async fn set_search_path(&self, subject: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // First make sure the schema exists by creating it if needed
-        self.schema_manager.add_schema(subject.to_string()).await?;
-
-        info!("Search path set to schema: {}", subject);
-        Ok(())
-    }
 }

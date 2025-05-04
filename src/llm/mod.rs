@@ -40,16 +40,6 @@ pub struct LlmManager {
 impl LlmManager {
     pub fn new(config: &LlmConfig) -> Result<Self, LlmError> {
         let generator: Box<dyn SqlGenerator + Send + Sync> = match config.backend.as_str() {
-            "local" => {
-                #[cfg(feature = "local_llm")]
-                {
-                    Box::new(providers::local::LocalLlmProvider::new(config)?)
-                }
-                #[cfg(not(feature = "local_llm"))]
-                {
-                    return Err(LlmError::ConfigError("Local LLM support not compiled in".to_string()));
-                }
-            }
             "remote" => Box::new(providers::remote::RemoteLlmProvider::new(config)?),
             "ollama" => Box::new(providers::ollama::OllamaProvider::new(config)?),
             _ => {

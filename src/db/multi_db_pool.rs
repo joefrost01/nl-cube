@@ -1,10 +1,9 @@
-// src/db/multi_db_pool.rs
 use duckdb::Connection;
 use r2d2::ManageConnection;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::{Arc, Mutex};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 pub struct MultiDbConnectionManager {
     main_db_path: String,
@@ -39,11 +38,6 @@ impl MultiDbConnectionManager {
         subject_dir.join(format!("{}.duckdb", subject))
     }
 
-    // Open a new connection to a specific subject database
-    pub fn open_subject_connection(&self, subject: &str) -> Result<Connection, duckdb::Error> {
-        let db_path = self.get_subject_db_path(subject);
-        Connection::open(&db_path)
-    }
 }
 
 impl ManageConnection for MultiDbConnectionManager {
