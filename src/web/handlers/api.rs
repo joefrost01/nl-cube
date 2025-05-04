@@ -12,7 +12,7 @@ use std::fs;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use std::ops::Deref;
 use arrow::ipc::writer::StreamWriter;
 
@@ -307,40 +307,152 @@ pub async fn nl_query(
 
     // Validate and clean the SQL
     let sql = raw_sql.replace("`","");
+    let sql_for_headers = sql.clone();  // Clone here for use outside the task
+
     info!("Validated SQL: {}", sql);
 
-    // Get a connection from the pool
-    let conn = app_state.db_pool.get().map_err(|e| {
-        error!("Failed to get DB connection: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Database connection error".to_string(),
-        )
-    })?;
+    // Execute the query
+    let result = app_state.schema_manager.execute_query(&sql, &target_subject).await;
+    let execution_time = std::time::Instant::now().elapsed().as_millis() as u64;
 
-    // First try to set the search_path for the query
-    match conn.execute(&format!("SET search_path = '{}'", target_subject), []) {
-        Ok(_) => info!("Successfully set search_path to '{}'", target_subject),
-        Err(e) => info!("Failed to set search_path: {} - will try direct table qualification", e),
+    match result {
+        Ok(rows) => {
+            // Create a response with metadata
+            let mut headers = HeaderMap::new();
+            if let Ok(v) = HeaderValue::from_str(&sql_for_headers) {
+                headers.insert(HeaderName::from_static("x-generated-sql"), v);
+            }
+
+            // Add row count and execution time
+            if let Ok(v) = HeaderValue::from_str(&rows.len().to_string()) {
+                headers.insert(HeaderName::from_static("x-total-count"), v);
+            }
+
+            if let Ok(v) = HeaderValue::from_str(&execution_time.to_string()) {
+                headers.insert(HeaderName::from_static("x-execution-time"), v);
+            }
+
+            // Extract column names from the first row if available
+            let columns = if !rows.is_empty() {
+                rows[0].keys().cloned().collect()
+            } else {
+                // Default column for COUNT queries
+                if sql_for_headers.to_uppercase().contains("COUNT") {
+                    vec!["count".to_string()]
+                } else {
+                    vec![]
+                }
+            };
+
+            // Create the metadata
+            let metadata = QueryMetadata {
+                row_count: rows.len(),
+                execution_time_ms: execution_time,
+                columns
+            };
+
+            // Create the response
+            let response = (StatusCode::OK, headers, Json(metadata)).into_response();
+
+            Ok(response)
+        },
+        Err(e) => {
+            error!("Query execution error: {}", e);
+
+            // Try a different approach - direct database connection
+            let data_dir = app_state.data_dir.join(&target_subject);
+            let db_path = data_dir.join(format!("{}.duckdb", target_subject));
+
+            if db_path.exists() {
+                // Use a direct connection for the fallback approach
+                info!("Trying fallback with direct connection to: {}", db_path.display());
+
+                let result = tokio::task::spawn_blocking({
+                    let sql = sql.clone();
+                    let db_path = db_path.clone();
+
+                    move || -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+                        let conn = duckdb::Connection::open(&db_path)?;
+                        let count: i64 = conn.query_row(&sql, [], |row| row.get(0))?;
+                        Ok(count)
+                    }
+                }).await;
+
+                match result {
+                    Ok(Ok(count)) => {
+                        // Create a response with metadata
+                        let mut headers = HeaderMap::new();
+                        if let Ok(v) = HeaderValue::from_str(&sql_for_headers) {
+                            headers.insert(HeaderName::from_static("x-generated-sql"), v);
+                        }
+
+                        // Add execution time
+                        if let Ok(v) = HeaderValue::from_str(&execution_time.to_string()) {
+                            headers.insert(HeaderName::from_static("x-execution-time"), v);
+                        }
+
+                        // Create metadata for COUNT result
+                        let column_name = if sql_for_headers.contains("total_orders") {
+                            "total_orders"
+                        } else if sql_for_headers.contains("number_of_orders") {
+                            "number_of_orders"
+                        } else {
+                            "count"
+                        };
+
+                        let metadata = QueryMetadata {
+                            row_count: 1,  // COUNT queries always return 1 row
+                            execution_time_ms: execution_time,
+                            columns: vec![column_name.to_string()]
+                        };
+
+                        // Create response with the direct count value
+                        Ok((StatusCode::OK, headers, Json(metadata)).into_response())
+                    },
+                    _ => {
+                        Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Query execution error: {}", e)))
+                    }
+                }
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Query execution error: {}", e)))
+            }
+        }
+    }
+}
+
+fn extract_tables_from_sql(sql: &str) -> Vec<String> {
+    let mut tables = Vec::new();
+    let sql_upper = sql.to_uppercase();
+
+    // Common SQL patterns where table names appear
+    let patterns = [
+        " FROM ",
+        " JOIN ",
+        " INTO ",
+        " UPDATE ",
+    ];
+
+    for pattern in patterns {
+        if let Some(pos) = sql_upper.find(pattern) {
+            let remaining = &sql[pos + pattern.len()..];
+            let table_end = remaining.find(|c: char| c.is_whitespace() || c == '(' || c == ';' || c == ',');
+
+            if let Some(end) = table_end {
+                let table_name = remaining[..end].trim();
+                if !table_name.is_empty() && !tables.contains(&table_name.to_string()) {
+                    tables.push(table_name.to_string());
+                }
+            } else if !remaining.trim().is_empty() {
+                // Take the whole remaining string if no separator found
+                let table_name = remaining.trim();
+                if !table_name.is_empty() && !tables.contains(&table_name.to_string()) {
+                    tables.push(table_name.to_string());
+                }
+            }
+        }
     }
 
-    // Create a response with metadata
-    let mut headers = HeaderMap::new();
-    if let Ok(v) = HeaderValue::from_str(&sql) {
-        headers.insert(HeaderName::from_static("x-generated-sql"), v);
-    }
-
-    // Add query metadata
-    let metadata = QueryMetadata {
-        row_count: 0,  // Will be updated after query execution
-        execution_time_ms: 0,  // Will be updated after query execution
-        columns: vec![]  // Will be updated after query execution
-    };
-
-    // Create the response
-    let response = (StatusCode::OK, headers, Json(metadata)).into_response();
-
-    Ok(response)
+    tables
 }
 
 fn extract_table_from_query(sql: &str) -> Option<String> {

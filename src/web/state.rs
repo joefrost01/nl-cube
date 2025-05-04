@@ -35,15 +35,13 @@ impl AppState {
         // Initialize template environment
         let mut env = Environment::new();
 
-        // In a real app, we would load templates from files
-        // env.set_loader(minijinja::loaders::FileSystemLoader::new("templates"));
-
         // Configure the template environment
         env.add_filter("json", |value: minijinja::value::Value| {
             serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
         });
 
-        // Create the schema manager
+        // Create standard schema manager since we're not using the MultiDb approach
+        // in this part of the code yet
         let schema_manager = SchemaManager::new(db_pool.clone());
 
         Self {

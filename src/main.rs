@@ -3,6 +3,8 @@ use r2d2::Pool;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info};
+use crate::db::multi_db_pool::MultiDbConnectionManager;
+use crate::db::schema_manager::SchemaManager;
 
 mod config;
 mod db;
@@ -48,6 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = Pool::builder()
         .max_size(config.database.pool_size as u32)
         .build(manager)?;
+
+    // Initialize the schema manager with the normal pool
+    let schema_manager = SchemaManager::new(pool.clone());
+
 
     // Initialize LLM manager
     info!("Initializing LLM manager with backend: {}", config.llm.backend);

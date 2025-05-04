@@ -1,12 +1,14 @@
+// src/db/schema_manager.rs
 use crate::db::db_utils::execute_stmt;
+use crate::db::multi_db_pool::MultiDbConnectionManager;
+use crate::db::db_pool::DuckDBConnectionManager;
 use duckdb::{Connection, Result as DuckResult, Statement};
 use r2d2::{Pool, PooledConnection};
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
-
-use crate::db::db_pool::DuckDBConnectionManager;
 
 /// A struct to cache and manage database schema information
 pub struct SchemaManager {
@@ -19,13 +21,25 @@ pub struct SchemaManager {
 }
 
 impl SchemaManager {
-    /// Create a new SchemaManager
+    /// Create a new SchemaManager with the standard connection manager
     pub fn new(db_pool: Pool<DuckDBConnectionManager>) -> Self {
         Self {
             db_pool,
             schema_cache: RwLock::new(HashMap::new()),
             last_refresh: RwLock::new(chrono::Utc::now()),
         }
+    }
+
+    /// Create a new SchemaManager with the multi-database connection manager
+    /// Note: This constructor is here for future use but isn't being used yet
+    pub fn with_multi_db(
+        db_pool: Pool<MultiDbConnectionManager>,
+        _conn_manager: Arc<MultiDbConnectionManager>,
+        _data_dir: PathBuf
+    ) -> Self {
+        // We can't currently use a MultiDbConnectionManager pool directly,
+        // but this constructor is here for future use
+        unimplemented!("Multi-database connection manager not yet fully implemented");
     }
 
     /// Refresh the schema cache
@@ -80,6 +94,182 @@ impl SchemaManager {
         Ok(())
     }
 
+    /// Execute a query with proper schema handling
+    // from src/db/schema_manager.rs
+    pub async fn execute_query(&self, sql: &str, schema: &str) -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
+        // Get a connection from the pool
+        let conn = self.db_pool.get()?;
+
+        // Try to attach the subject database if it exists
+        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
+        let subject_dir = std::path::Path::new(&data_dir).join(schema);
+        let db_path = subject_dir.join(format!("{}.duckdb", schema));
+
+        if db_path.exists() {
+            // Try to attach the database
+            let attach_sql = format!("ATTACH DATABASE '{}' AS {}", db_path.to_string_lossy(), schema);
+            match conn.execute(&attach_sql, []) {
+                Ok(_) => debug!("Successfully attached database for subject: {}", schema),
+                Err(e) => {
+                    // If the database is already attached, that's fine
+                    if !e.to_string().contains("already attached") {
+                        warn!("Failed to attach database: {}", e);
+                        // Continue anyway as it might be a different issue
+                    }
+                }
+            }
+        }
+
+        // Try to set the search path to the schema
+        let set_search_path = conn.execute(&format!("SET search_path = '{}'", schema), []);
+        if let Err(e) = set_search_path {
+            warn!("Failed to set search_path: {}", e);
+        }
+
+        // Prepare the SQL with schema qualification
+        let qualified_sql = self.qualify_sql(sql, schema).await;
+
+        // Use a clone of the qualified SQL to move into the task
+        let sql_to_execute = qualified_sql.clone();
+        // Clone the schema to avoid lifetime issues
+        let schema_clone = schema.to_string();
+
+        // Execute the query in a blocking task
+        let result = tokio::task::spawn_blocking(move || -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
+            // Prepare the statement
+            let mut stmt = match conn.prepare(&sql_to_execute) {
+                Ok(stmt) => stmt,
+                Err(e) => {
+                    error!("Failed to prepare statement: {}", e);
+
+                    // Additional diagnostic query to check schema existence
+                    match conn.prepare("SELECT schema_name FROM information_schema.schemata") {
+                        Ok(mut diag_stmt) => {
+                            let schemas: Vec<String> = match diag_stmt.query_map([], |row| row.get::<_, String>(0)) {
+                                Ok(rows) => rows.filter_map(Result::ok).collect(),
+                                Err(_) => Vec::new(),
+                            };
+                            debug!("Available schemas: {:?}", schemas);
+                        },
+                        Err(diag_err) => {
+                            debug!("Failed to run schema diagnostic: {}", diag_err);
+                        }
+                    }
+
+                    // Try to explicitly attach the database again
+                    let subject_dir = Path::new("data").join(&schema_clone);
+                    let db_path = subject_dir.join(format!("{}.duckdb", schema_clone));
+
+                    if db_path.exists() {
+                        debug!("Subject database exists at {}", db_path.display());
+
+                        let attach_sql = format!("ATTACH DATABASE '{}' AS {}", db_path.to_str().unwrap(), schema_clone);
+                        match conn.execute(&attach_sql, []) {
+                            Ok(_) => {
+                                debug!("Explicitly attached database for subject: {}", schema_clone);
+                                // Try to prepare the statement again
+                                match conn.prepare(&sql_to_execute) {
+                                    Ok(new_stmt) => new_stmt,
+                                    Err(retry_err) => {
+                                        error!("Still failed to prepare statement after explicit attach: {}", retry_err);
+                                        return Err(Box::new(retry_err));
+                                    }
+                                }
+                            },
+                            Err(attach_err) => {
+                                debug!("Failed to explicitly attach database: {}", attach_err);
+                                return Err(Box::new(e));
+                            }
+                        }
+                    } else {
+                        debug!("Subject database does not exist at {}", db_path.display());
+                        return Err(Box::new(e));
+                    }
+                }
+            };
+
+            // Get column names and count
+            let column_count = stmt.column_count();
+            let mut column_names = Vec::new();
+
+            for i in 0..column_count {
+                match stmt.column_name(i) {
+                    Ok(name) => column_names.push(name.to_string()),
+                    Err(e) => {
+                        error!("Failed to get column name for index {}: {}", i, e);
+                        column_names.push(format!("column_{}", i));
+                    }
+                }
+            }
+
+            // Execute the query
+            let mut rows = match stmt.query([]) {
+                Ok(rows) => rows,
+                Err(e) => {
+                    error!("Failed to execute query: {}", e);
+                    return Err(Box::new(e));
+                }
+            };
+
+            let mut results = Vec::new();
+
+            // Process each row
+            while let Some(row) = match rows.next() {
+                Ok(row_opt) => row_opt,
+                Err(e) => {
+                    error!("Error fetching next row: {}", e);
+                    return Err(Box::new(e));
+                }
+            } {
+                let mut row_map = HashMap::new();
+
+                for (i, name) in column_names.iter().enumerate() {
+                    // Handle different data types using pattern matching
+                    let value = match row.get_ref(i) {
+                        Ok(val_ref) => match val_ref {
+                            duckdb::types::ValueRef::Null => "NULL".to_string(),
+                            duckdb::types::ValueRef::Boolean(v) => v.to_string(),
+                            duckdb::types::ValueRef::TinyInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::SmallInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::Int(v) => v.to_string(),
+                            duckdb::types::ValueRef::BigInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::HugeInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::UTinyInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::USmallInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::UInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::UBigInt(v) => v.to_string(),
+                            duckdb::types::ValueRef::Float(v) => v.to_string(),
+                            duckdb::types::ValueRef::Double(v) => v.to_string(),
+                            duckdb::types::ValueRef::Date32(v) => v.to_string(),
+                            duckdb::types::ValueRef::Time64(_, v) => v.to_string(),
+                            duckdb::types::ValueRef::Timestamp(_, v) => v.to_string(),
+                            duckdb::types::ValueRef::Interval { months, days, nanos } =>
+                                format!("{}m {}d {}n", months, days, nanos),
+                            duckdb::types::ValueRef::Blob(v) => format!("[BLOB: {} bytes]", v.len()),
+                            duckdb::types::ValueRef::Text(v) => String::from_utf8_lossy(v).to_string(),
+                            duckdb::types::ValueRef::Decimal(v) => v.to_string(),
+                            // Catch-all for any other types or future variants
+                            _ => "[UNKNOWN TYPE]".to_string(),
+                        },
+                        Err(e) => {
+                            error!("Error getting value for column {}: {}", name, e);
+                            "[ERROR]".to_string()
+                        }
+                    };
+
+                    row_map.insert(name.clone(), value);
+                }
+
+                results.push(row_map);
+            }
+
+            Ok(results)
+        }).await??;
+
+        Ok(result)
+    }
+
+    // Rest of the methods remain the same...
     /// Get all schemas
     pub async fn get_schemas(&self) -> Vec<String> {
         let cache = self.schema_cache.read().await;
@@ -104,37 +294,6 @@ impl SchemaManager {
         match cache.get(schema) {
             Some(tables) => tables.contains(&table.to_string()),
             None => false,
-        }
-    }
-
-    /// Set search_path for a connection - explicitly handling errors
-    pub fn set_search_path(&self, conn: &Connection, schema: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // First ensure the schema exists by creating it if needed
-        let create_schema_sql = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema);
-        match conn.execute(&create_schema_sql, []) {
-            Ok(_) => {
-                debug!("Schema '{}' created or exists", schema);
-            },
-            Err(e) => {
-                warn!("Error creating schema '{}': {}", schema, e);
-                // Continue anyway, as the schema might already exist
-            }
-        }
-
-        // Try to set search_path
-        let search_path_sql = format!("SET search_path = '{}'", schema);
-        match conn.execute(&search_path_sql, []) {
-            Ok(_) => {
-                debug!("Successfully set search_path to '{}'", schema);
-                Ok(())
-            },
-            Err(e) => {
-                warn!("Failed to set search_path to '{}': {}", schema, e);
-                Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to set search_path: {}", e)
-                )))
-            }
         }
     }
 
@@ -166,103 +325,6 @@ impl SchemaManager {
         }
 
         result
-    }
-
-    /// Get a validated and qualified SQL query ready for execution
-    pub async fn prepare_sql(&self, sql: &str, schema: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        if !self.schema_exists(schema).await {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Schema '{}' does not exist", schema)
-            )));
-        }
-
-        // Qualify the SQL with schema name
-        let qualified_sql = self.qualify_sql(sql, schema).await;
-        debug!("Qualified SQL: {}", qualified_sql);
-
-        Ok(qualified_sql)
-    }
-
-    /// Execute a SQL query with proper schema handling
-    pub async fn execute_query(&self, sql: &str, schema: &str) -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
-        // Get a connection from the pool
-        let conn = self.db_pool.get()?;
-
-        // Prepare the SQL with schema qualification
-        let qualified_sql = self.prepare_sql(sql, schema).await?;
-
-        // Try to set search_path
-        let set_search_path_result = self.set_search_path(&conn, schema);
-        if let Err(e) = set_search_path_result {
-            debug!("Could not set search_path: {}. Will rely on fully qualified table names.", e);
-        }
-
-        // Use a clone of the qualified SQL to move into the task
-        let sql_to_execute = qualified_sql.clone();
-
-        // Execute the query in a blocking task
-        let result = tokio::task::spawn_blocking(move || -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
-            // Prepare the statement
-            let mut stmt = conn.prepare(&sql_to_execute)?;
-
-            // Get column names and count BEFORE starting the query
-            let column_count = stmt.column_count();
-            let mut column_names = Vec::new();
-
-            for i in 0..column_count {
-                let name = stmt.column_name(i)?;
-                column_names.push(name.to_string());
-            }
-
-            // NOW execute the query
-            let mut rows = stmt.query([])?;
-
-            let mut results = Vec::new();
-
-            // Process each row
-            while let Some(row) = rows.next()? {
-                let mut row_map = HashMap::new();
-
-                for (i, name) in column_names.iter().enumerate() {
-                    // Handle different data types using pattern matching
-                    let value = match row.get_ref(i)? {
-                        // Updated for the exact enum variants in DuckDB 1.1.1
-                        duckdb::types::ValueRef::Null => "NULL".to_string(),
-                        duckdb::types::ValueRef::Boolean(v) => v.to_string(),
-                        duckdb::types::ValueRef::TinyInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::SmallInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::Int(v) => v.to_string(),
-                        duckdb::types::ValueRef::BigInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::HugeInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::UTinyInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::USmallInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::UInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::UBigInt(v) => v.to_string(),
-                        duckdb::types::ValueRef::Float(v) => v.to_string(),
-                        duckdb::types::ValueRef::Double(v) => v.to_string(),
-                        duckdb::types::ValueRef::Date32(v) => v.to_string(),
-                        duckdb::types::ValueRef::Time64(_, v) => v.to_string(), // Properly handling tuple
-                        duckdb::types::ValueRef::Timestamp(_, v) => v.to_string(), // Properly handling tuple
-                        duckdb::types::ValueRef::Interval { months, days, nanos } =>
-                            format!("{}m {}d {}n", months, days, nanos),
-                        duckdb::types::ValueRef::Blob(v) => format!("[BLOB: {} bytes]", v.len()),
-                        duckdb::types::ValueRef::Text(v) => String::from_utf8_lossy(v).to_string(),
-                        duckdb::types::ValueRef::Decimal(v) => v.to_string(),
-                        // Catch-all for any other types or future variants
-                        _ => "[UNKNOWN TYPE]".to_string(),
-                    };
-
-                    row_map.insert(name.clone(), value);
-                }
-
-                results.push(row_map);
-            }
-
-            Ok(results)
-        }).await??;
-
-        Ok(result)
     }
 
     /// Add a schema (create if not exists)

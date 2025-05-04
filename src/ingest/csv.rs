@@ -94,6 +94,51 @@ impl CsvIngestor {
             columns,
         })
     }
+
+    fn update_schema_from_table(&self, conn: &Connection, table_name: &str, schema: &mut TableSchema) -> Result<(), IngestError> {
+        // Query the pragma table_info to get actual column information
+        let query = format!("PRAGMA table_info(\"{}\")", table_name);
+        let mut stmt = conn.prepare(&query)
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare pragma query: {}", e)))?;
+
+        let columns_result: Result<Vec<ColumnSchema>, _> = stmt.query_map([], |row| {
+            // Column order: cid, name, type, notnull, dflt_value, pk
+            let name: String = row.get(1)?;
+            let type_str: String = row.get(2)?;
+            let not_null: bool = row.get::<_, i32>(3)? != 0;
+
+            let data_type = match type_str.to_lowercase().as_str() {
+                "integer" => DataType::Integer,
+                "bigint" => DataType::BigInt,
+                "double" => DataType::Double,
+                "varchar" | "text" => DataType::String,
+                "boolean" => DataType::Boolean,
+                "date" => DataType::Date,
+                "timestamp" => DataType::Timestamp,
+                other => DataType::Unknown(other.to_string()),
+            };
+
+            Ok(ColumnSchema {
+                name,
+                data_type,
+                nullable: !not_null,
+            })
+        })
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to query column info: {}", e)))?
+            .collect();
+
+        match columns_result {
+            Ok(columns) => {
+                if !columns.is_empty() {
+                    schema.columns = columns;
+                }
+                Ok(())
+            },
+            Err(e) => {
+                Err(IngestError::DatabaseError(format!("Failed to collect column info: {}", e)))
+            }
+        }
+    }
 }
 
 // Implement Send + Sync safely
@@ -113,34 +158,36 @@ impl FileIngestor for CsvIngestor {
         let absolute_path = path.canonicalize()
             .map_err(|e| IngestError::IoError(e))?;
 
-        // Use the environment DATABASE_URL variable to determine which file to open
-        let db_file = std::env::var("DATABASE_URL").unwrap_or_else(|_| "nl-cube.db".to_string());
-        tracing::info!("Opening database connection to: {}", db_file);
+        // Build the path to the subject database
+        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
+        let subject_dir = Path::new(&data_dir).join(subject);
+        if !subject_dir.exists() {
+            std::fs::create_dir_all(&subject_dir)
+                .map_err(|e| IngestError::IoError(e))?;
+        }
 
-        // Connect to the actual DuckDB database
-        let conn = Connection::open(&db_file)
+        let db_path = subject_dir.join(format!("{}.duckdb", subject));
+
+        tracing::info!("Opening database connection to: {}", db_path.display());
+
+        // Connect directly to the subject database
+        let conn = Connection::open(&db_path)
             .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
 
-        // Create the schema if it doesn't exist
-        let create_schema_sql = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", subject);
-        conn.execute(&create_schema_sql, [])
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to create schema: {}", e)))?;
-
         // Log database and table info
-        tracing::info!("Ingesting file to DuckDB. Schema: {}, Table: {}, File: {}",
-                       subject, table_name, absolute_path.display());
+        tracing::info!("Ingesting file to DuckDB. Table: {}, File: {}",
+                       table_name, absolute_path.display());
 
         // Create a more robust create table statement with explicit DROP IF EXISTS
-        let drop_sql = format!("DROP TABLE IF EXISTS \"{}\".\"{}\"", subject, table_name);
+        let drop_sql = format!("DROP TABLE IF EXISTS \"{}\"", table_name);
 
         // First drop the table if it exists
         conn.execute(&drop_sql, [])
             .map_err(|e| IngestError::DatabaseError(format!("Failed to drop existing table: {}", e)))?;
 
-        // Now use DuckDB's CSV reading to create the table directly using the schema.table format
+        // Now use DuckDB's CSV reading to create the table directly
         let create_sql = format!(
-            "CREATE TABLE \"{}\".\"{}\" AS SELECT * FROM read_csv_auto('{}', HEADER=true, AUTO_DETECT=true)",
-            subject,
+            "CREATE TABLE \"{}\" AS SELECT * FROM read_csv_auto('{}', HEADER=true, AUTO_DETECT=true)",
             table_name,
             absolute_path.to_string_lossy()
         );
@@ -151,11 +198,11 @@ impl FileIngestor for CsvIngestor {
             .map_err(|e| IngestError::DatabaseError(format!("Failed to create table: {}", e)))?;
 
         // Verify table was created
-        let verify_sql = format!("SELECT COUNT(*) FROM \"{}\".\"{}\"", subject, table_name);
+        let verify_sql = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
 
         match conn.query_row(&verify_sql, [], |row| row.get::<_, i64>(0)) {
             Ok(count) => {
-                tracing::info!("Successfully created table {}.{} with {} rows", subject, table_name, count);
+                tracing::info!("Successfully created table {} with {} rows", table_name, count);
             }
             Err(e) => {
                 tracing::error!("Table creation verification failed: {}", e);
@@ -163,44 +210,22 @@ impl FileIngestor for CsvIngestor {
             }
         }
 
-        // Try to look up the table in information_schema to verify
-        // Use parameterized query to prevent SQL injection and improve reliability
-        let master_sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = ?";
+        // Try to look up the table in sqlite_master to verify
+        let master_sql = "SELECT name FROM sqlite_master WHERE type='table'";
         let mut stmt = conn.prepare(master_sql)
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare information_schema query: {}", e)))?;
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare sqlite_master query: {}", e)))?;
 
         let table_names: Result<Vec<String>, _> = stmt
-            .query_map(&[subject], |row| row.get::<_, String>(0))
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to query information_schema: {}", e)))?
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| IngestError::DatabaseError(format!("Failed to query sqlite_master: {}", e)))?
             .collect();
 
         match table_names {
             Ok(names) => {
-                tracing::info!("Tables in schema {}: {:?}", subject, names);
+                tracing::info!("Tables in database: {:?}", names);
                 if !names.contains(&table_name.to_string()) {
-                    tracing::warn!("Table {} not found in schema {} through information_schema - this may be a timing issue",
-                                  table_name, subject);
-
-                    // Let's perform a slightly different query as a backup check
-                    let backup_sql = format!("
-                        SELECT COUNT(*)
-                        FROM information_schema.tables
-                        WHERE table_schema = '{}'
-                              AND table_name = '{}'
-                    ", subject, table_name);
-
-                    match conn.query_row(&backup_sql, [], |row| row.get::<_, i64>(0)) {
-                        Ok(count) => {
-                            if count > 0 {
-                                tracing::info!("Backup check confirms table {}.{} exists", subject, table_name);
-                            } else {
-                                tracing::warn!("Backup check also failed to find table {}.{}", subject, table_name);
-                            }
-                        },
-                        Err(e) => {
-                            tracing::error!("Backup table check failed: {}", e);
-                        }
-                    }
+                    tracing::warn!("Table {} not found through sqlite_master - this may be a timing issue",
+                                  table_name);
                 }
             }
             Err(e) => {
