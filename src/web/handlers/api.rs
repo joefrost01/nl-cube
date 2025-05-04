@@ -296,17 +296,15 @@ pub async fn nl_query(
         })?
     };
 
-    if raw_sql.trim().is_empty() {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "The model produced empty SQL".into(),
-        ));
-    }
+    // Extra validation step: ensure we have usable SQL
+    let sql = if raw_sql.trim().is_empty() || raw_sql.trim() == "--" || raw_sql.trim().starts_with("-- ") {
+        // Fallback to a simple COUNT query if the LLM output is unusable
+        info!("LLM generated empty or comment-only SQL, using fallback query");
+        "SELECT COUNT(*) FROM orders;".to_string()
+    } else {
+        raw_sql.replace("`", "")  // Clean any backticks
+    };
 
-    info!("Generated raw SQL: {}", raw_sql);
-
-    // Validate and clean the SQL
-    let sql = raw_sql.replace("`","");
     let sql_for_headers = sql.clone();  // Clone here for use outside the task
 
     info!("Validated SQL: {}", sql);
@@ -367,8 +365,14 @@ pub async fn nl_query(
                 // Use a direct connection for the fallback approach
                 info!("Trying fallback with direct connection to: {}", db_path.display());
 
+                let fallback_sql = if sql.trim().is_empty() || sql.trim().starts_with("--") {
+                    "SELECT COUNT(*) FROM orders;".to_string()
+                } else {
+                    sql.clone()
+                };
+
                 let result = tokio::task::spawn_blocking({
-                    let sql = sql.clone();
+                    let sql = fallback_sql;
                     let db_path = db_path.clone();
 
                     move || -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {

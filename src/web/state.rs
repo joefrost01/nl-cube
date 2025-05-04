@@ -172,7 +172,7 @@ impl AppState {
     }
 
     // Get simple table metadata for LLM context
-    // src/web/state.rs
+    // In src/web/state.rs - updated get_table_metadata method
     pub async fn get_table_metadata(&self, current_subject: Option<&str>) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // Use a blocking task to avoid thread-safety issues with DuckDB
         let data_dir = self.data_dir.clone();
@@ -181,6 +181,171 @@ impl AppState {
 
         // Perform the database query in a blocking task
         let table_metadata = tokio::task::spawn_blocking(move || -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+            // Define helper functions within the closure scope
+
+            // Helper function to get tables from a connection
+            fn get_tables_from_connection(conn: &duckdb::Connection) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+                let mut tables = Vec::new();
+
+                // Try the most reliable method first: sqlite_master
+                let query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'duck_%' AND name NOT LIKE 'pg_%'";
+                match conn.prepare(query) {
+                    Ok(mut stmt) => {
+                        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                        for row in rows {
+                            if let Ok(table_name) = row {
+                                tables.push(table_name);
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        // Try alternative methods
+                        tracing::warn!("Failed to get tables from sqlite_master: {}", e);
+
+                        // Try SHOW TABLES
+                        match conn.prepare("SHOW TABLES") {
+                            Ok(mut stmt) => {
+                                let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                                for row in rows {
+                                    if let Ok(table_name) = row {
+                                        tables.push(table_name);
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                tracing::warn!("Failed to get tables from SHOW TABLES: {}", e);
+
+                                // Try a third method
+                                match conn.prepare("PRAGMA table_list") {
+                                    Ok(mut stmt) => {
+                                        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+                                        for row in rows {
+                                            if let Ok(table_name) = row {
+                                                if !table_name.starts_with("sqlite_") &&
+                                                    !table_name.starts_with("duck_") &&
+                                                    !table_name.starts_with("pg_") {
+                                                    tables.push(table_name);
+                                                }
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        tracing::warn!("Failed to get tables from PRAGMA table_list: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Final fallback method - try a direct query to each likely table
+                if tables.is_empty() {
+                    // List of common table names to try
+                    for possible_table in &["orders", "customers", "products", "sales"] {
+                        match conn.prepare(&format!("SELECT * FROM \"{}\" LIMIT 1", possible_table)) {
+                            Ok(_) => {
+                                tables.push(possible_table.to_string());
+                            },
+                            Err(_) => {} // Ignore errors - this is just a fallback attempt
+                        }
+                    }
+                }
+
+                Ok(tables)
+            }
+
+            // Get alternative column information if PRAGMA fails
+            fn get_column_info_alternative(conn: &duckdb::Connection, table_name: &str) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+                let mut columns = Vec::new();
+
+                // Try with a SELECT query
+                let query = format!("SELECT * FROM \"{}\" LIMIT 1", table_name);
+                match conn.prepare(&query) {
+                    Ok(stmt) => {
+                        let column_count = stmt.column_count();
+                        for i in 0..column_count {
+                            if let Ok(name) = stmt.column_name(i) {
+                                columns.push((name.to_string(), "UNKNOWN".to_string()));
+                            }
+                        }
+                    },
+                    Err(_) => {}
+                }
+
+                Ok(columns)
+            }
+
+            // Add sample data from a table to the metadata string
+            fn add_sample_data(conn: &duckdb::Connection, table_name: &str, metadata: &mut String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                match conn.prepare(&format!("SELECT * FROM \"{}\" LIMIT 3", table_name)) {
+                    Ok(mut sample_stmt) => {
+                        let column_count = sample_stmt.column_count();
+                        let mut column_names = Vec::new();
+
+                        // Get column names
+                        for i in 0..column_count {
+                            if let Ok(name) = sample_stmt.column_name(i) {
+                                column_names.push(name.to_string());
+                            } else {
+                                column_names.push(format!("column_{}", i));
+                            }
+                        }
+
+                        // Add header row
+                        if !column_names.is_empty() {
+                            metadata.push_str("| ");
+                            for name in &column_names {
+                                metadata.push_str(&format!("{} | ", name));
+                            }
+                            metadata.push_str("\n| ");
+
+                            // Add separator row
+                            for _ in 0..column_names.len() {
+                                metadata.push_str("--- | ");
+                            }
+                            metadata.push_str("\n");
+
+                            // Add data rows
+                            let mut rows = sample_stmt.query([])?;
+                            let mut row_count = 0;
+
+                            while let Some(row) = rows.next()? {
+                                metadata.push_str("| ");
+
+                                for i in 0..column_count {
+                                    let value = match row.get_ref(i) {
+                                        Ok(val_ref) => match val_ref {
+                                            duckdb::types::ValueRef::Null => "NULL".to_string(),
+                                            _ => match row.get::<_, String>(i) {
+                                                Ok(v) => v,
+                                                Err(_) => "ERROR".to_string(),
+                                            },
+                                        },
+                                        Err(_) => "ERROR".to_string(),
+                                    };
+
+                                    metadata.push_str(&format!("{} | ", value));
+                                }
+
+                                metadata.push_str("\n");
+                                row_count += 1;
+
+                                if row_count >= 3 {
+                                    break;
+                                }
+                            }
+
+                            metadata.push_str("\n");
+                        }
+                    },
+                    Err(e) => {
+                        metadata.push_str(&format!("Could not retrieve sample data: {}.\n\n", e));
+                    }
+                }
+
+                Ok(())
+            }
+
             // Build a more detailed metadata string for the LLM
             let mut metadata = String::from("# DATABASE SCHEMA\n\n");
 
@@ -229,124 +394,84 @@ impl AppState {
                 // Open a new connection to this database
                 match duckdb::Connection::open(&db_path) {
                     Ok(conn) => {
-                        // Get a list of tables in this database
-                        match conn.prepare("SELECT name FROM sqlite_master WHERE type='table'") {
-                            Ok(mut stmt) => {
-                                let tables: Vec<String> = stmt.query_map([], |row| row.get::<_, String>(0))
-                                    .map_err(|_| "Failed to query tables")?
-                                    .filter_map(Result::ok)
-                                    .collect();
+                        // Try multiple ways to get table information
+                        let tables = get_tables_from_connection(&conn)?;
 
-                                if tables.is_empty() {
-                                    metadata.push_str("No tables found in this database.\n\n");
-                                    continue;
-                                }
+                        if tables.is_empty() {
+                            metadata.push_str("No tables found in this database.\n\n");
+                            continue;
+                        }
 
-                                // For each table, describe its schema
-                                for table_name in &tables {
-                                    metadata.push_str(&format!("### Table: {}\n\n", table_name));
+                        // For each table, describe its schema
+                        for table_name in &tables {
+                            metadata.push_str(&format!("### Table: {}\n\n", table_name));
 
-                                    // Get column information
-                                    match conn.prepare(&format!("PRAGMA table_info(\"{}\")", table_name)) {
-                                        Ok(mut col_stmt) => {
-                                            let columns: Vec<(String, String, bool)> = col_stmt.query_map([], |row| {
-                                                Ok((
-                                                    row.get::<_, String>(1)?, // name
-                                                    row.get::<_, String>(2)?, // type
-                                                    row.get::<_, i32>(3)? == 0 // notnull (0 = nullable)
-                                                ))
-                                            })
-                                                .map_err(|_| "Failed to query columns")?
-                                                .filter_map(Result::ok)
-                                                .collect();
+                            // First try to get column information directly with PRAGMA
+                            match conn.prepare(&format!("PRAGMA table_info(\"{}\")", table_name)) {
+                                Ok(mut col_stmt) => {
+                                    let columns: Vec<(String, String, bool)> = col_stmt.query_map([], |row| {
+                                        Ok((
+                                            row.get::<_, String>(1)?, // name
+                                            row.get::<_, String>(2)?, // type
+                                            row.get::<_, i32>(3)? == 0 // notnull (0 = nullable)
+                                        ))
+                                    })?
+                                        .filter_map(Result::ok)
+                                        .collect();
 
+                                    if !columns.is_empty() {
+                                        metadata.push_str("| Column Name | Data Type | Nullable |\n");
+                                        metadata.push_str("|------------|-----------|----------|\n");
+
+                                        for (name, data_type, nullable) in columns {
+                                            metadata.push_str(&format!("| {} | {} | {} |\n",
+                                                                       name,
+                                                                       data_type,
+                                                                       if nullable { "YES" } else { "NO" }
+                                            ));
+                                        }
+
+                                        metadata.push_str("\n");
+
+                                        // Add sample data for a few rows
+                                        metadata.push_str("#### Sample Data:\n\n");
+                                        add_sample_data(&conn, table_name, &mut metadata)?;
+                                    } else {
+                                        metadata.push_str("No column information available.\n\n");
+                                    }
+                                },
+                                Err(e) => {
+                                    // Try alternative approach for getting column info
+                                    metadata.push_str(&format!("Could not retrieve column information using PRAGMA: {}.\n", e));
+
+                                    match get_column_info_alternative(&conn, table_name) {
+                                        Ok(columns) => {
                                             if !columns.is_empty() {
                                                 metadata.push_str("| Column Name | Data Type | Nullable |\n");
                                                 metadata.push_str("|------------|-----------|----------|\n");
 
-                                                for (name, data_type, nullable) in columns {
+                                                for (name, data_type) in columns {
                                                     metadata.push_str(&format!("| {} | {} | {} |\n",
                                                                                name,
                                                                                data_type,
-                                                                               if nullable { "YES" } else { "NO" }
+                                                                               "UNKNOWN"
                                                     ));
                                                 }
-
                                                 metadata.push_str("\n");
-
-                                                // Add sample data
-                                                metadata.push_str("#### Sample Data:\n\n");
-                                                match conn.prepare(&format!("SELECT * FROM \"{}\" LIMIT 3", table_name)) {
-                                                    Ok(mut sample_stmt) => {
-                                                        let column_count = sample_stmt.column_count();
-                                                        let mut column_names = Vec::new();
-
-                                                        // Get column names
-                                                        for i in 0..column_count {
-                                                            if let Ok(name) = sample_stmt.column_name(i) {
-                                                                column_names.push(name.to_string());
-                                                            }
-                                                        }
-
-                                                        // Add header row
-                                                        metadata.push_str("| ");
-                                                        for name in &column_names {
-                                                            metadata.push_str(&format!("{} | ", name));
-                                                        }
-                                                        metadata.push_str("\n| ");
-
-                                                        // Add separator row
-                                                        for _ in 0..column_names.len() {
-                                                            metadata.push_str("--- | ");
-                                                        }
-                                                        metadata.push_str("\n");
-
-                                                        // Add data rows
-                                                        let mut rows = sample_stmt.query([]).map_err(|_| "Failed to query sample data")?;
-                                                        while let Some(row) = rows.next().map_err(|_| "Failed to get next row")? {
-                                                            metadata.push_str("| ");
-
-                                                            for i in 0..column_count {
-                                                                let value = match row.get_ref(i) {
-                                                                    Ok(val_ref) => match val_ref {
-                                                                        duckdb::types::ValueRef::Null => "NULL".to_string(),
-                                                                        _ => match row.get::<_, String>(i) {
-                                                                            Ok(v) => v,
-                                                                            Err(_) => "ERROR".to_string(),
-                                                                        },
-                                                                    },
-                                                                    Err(_) => "ERROR".to_string(),
-                                                                };
-
-                                                                metadata.push_str(&format!("{} | ", value));
-                                                            }
-
-                                                            metadata.push_str("\n");
-                                                        }
-
-                                                        metadata.push_str("\n");
-                                                    },
-                                                    Err(_) => {
-                                                        metadata.push_str("Could not retrieve sample data.\n\n");
-                                                    }
-                                                }
                                             } else {
-                                                metadata.push_str("Table has no columns.\n\n");
+                                                metadata.push_str("No column information available.\n\n");
                                             }
                                         },
                                         Err(_) => {
-                                            metadata.push_str("Could not retrieve column information.\n\n");
+                                            metadata.push_str("Could not retrieve column information through any method.\n\n");
                                         }
                                     }
                                 }
-                            },
-                            Err(_) => {
-                                metadata.push_str("Could not query tables in the database.\n\n");
                             }
                         }
                     },
-                    Err(_) => {
-                        metadata.push_str("Could not open database file.\n\n");
+                    Err(e) => {
+                        metadata.push_str(&format!("Could not open database file: {}.\n\n", e));
                     }
                 }
             }

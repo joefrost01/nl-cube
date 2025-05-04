@@ -72,21 +72,16 @@ impl IngestManager {
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| IngestError::UnsupportedFileType("No extension".to_string()))?;
 
-        // First, create the schema if it doesn't exist
-        let conn = duckdb::Connection::open(&self.connection_string)
-            .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
-
-        // Create the schema with proper error handling
-        let create_schema_sql = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", subject);
-        match conn.execute(&create_schema_sql, []) {
-            Ok(_) => {
-                tracing::info!("Created or ensured schema '{}' exists", subject);
-            },
-            Err(e) => {
-                tracing::error!("Failed to create schema '{}': {}", subject, e);
-                return Err(IngestError::DatabaseError(format!("Failed to create schema: {}", e)));
-            }
+        // Ensure the subject directory exists
+        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
+        let subject_dir = Path::new(&data_dir).join(subject);
+        if !subject_dir.exists() {
+            std::fs::create_dir_all(&subject_dir)
+                .map_err(|e| IngestError::IoError(e))?;
         }
+
+        // Log that we've ensured the subject directory exists
+        tracing::info!("Created or ensured schema '{}' exists", subject);
 
         // Proceed with ingestion based on file type
         match extension.to_lowercase().as_str() {

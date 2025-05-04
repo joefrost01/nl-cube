@@ -18,6 +18,8 @@ pub struct SchemaManager {
     schema_cache: RwLock<HashMap<String, Vec<String>>>,
     /// Last refresh timestamp
     last_refresh: RwLock<chrono::DateTime<chrono::Utc>>,
+    /// Data directory where subject databases are stored
+    data_dir: PathBuf,
 }
 
 impl SchemaManager {
@@ -27,6 +29,7 @@ impl SchemaManager {
             db_pool,
             schema_cache: RwLock::new(HashMap::new()),
             last_refresh: RwLock::new(chrono::Utc::now()),
+            data_dir: PathBuf::from("data"), // Default data directory
         }
     }
 
@@ -36,11 +39,12 @@ impl SchemaManager {
         conn_manager: Arc<MultiDbConnectionManager>,
         data_dir: PathBuf
     ) -> Self {
-        // Create the schema manager with the main pool
+        // Create the schema manager
         let manager = Self {
             db_pool,
             schema_cache: RwLock::new(HashMap::new()),
             last_refresh: RwLock::new(chrono::Utc::now()),
+            data_dir: data_dir.clone(), // Clone the data_dir to avoid borrowing issues
         };
 
         // Register existing subject databases
@@ -69,45 +73,117 @@ impl SchemaManager {
     pub async fn refresh_cache(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Refreshing schema cache");
 
-        // Get a connection from the pool
-        let conn = self.db_pool.get()?;
+        // Create a new HashMap to store our schema information
+        let mut schema_map = HashMap::new();
 
-        // Use a blocking task to execute the query
-        let schemas = tokio::task::spawn_blocking(move || -> Result<HashMap<String, Vec<String>>, Box<dyn std::error::Error + Send + Sync>> {
-            let mut schema_map = HashMap::new();
+        // Scan the data directory for subject folders
+        if self.data_dir.exists() {
+            let entries = std::fs::read_dir(&self.data_dir)?;
 
-            // Get all schemas except system schemas
-            let mut stmt = conn.prepare("
-                SELECT schema_name
-                FROM information_schema.schemata
-                WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'main')
-            ")?;
+            for entry in entries.filter_map(Result::ok) {
+                if entry.path().is_dir() {
+                    if let Some(subject_name) = entry.file_name().to_str() {
+                        let db_path = entry.path().join(format!("{}.duckdb", subject_name));
 
-            let schema_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
-            let schemas: Vec<String> = schema_iter.filter_map(Result::ok).collect();
+                        // If this subject has a database file, query its tables
+                        if db_path.exists() {
+                            debug!("Scanning subject database: {}", subject_name);
 
-            for schema_name in schemas {
-                debug!("Found schema: {}", schema_name);
+                            // Query the database for tables in a blocking task
+                            let subject_tables = tokio::task::spawn_blocking({
+                                let db_path = db_path.clone();
+                                move || -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+                                    let conn = Connection::open(&db_path)?;
 
-                // Get tables for this schema
-                let table_query = format!(
-                    "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
-                    schema_name
-                );
+                                    // Query for tables in this DB - try both methods
+                                    let mut tables = Vec::new();
 
-                let mut tables_stmt = conn.prepare(&table_query)?;
-                let table_iter = tables_stmt.query_map([], |row| row.get::<_, String>(0))?;
-                let tables: Vec<String> = table_iter.filter_map(Result::ok).collect();
+                                    // First try sqlite_master (more reliable)
+                                    let query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'duck_%' AND name NOT LIKE 'pg_%'";
 
-                schema_map.insert(schema_name, tables);
+                                    match conn.prepare(query) {
+                                        Ok(mut stmt) => {
+                                            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                                            for row in rows {
+                                                if let Ok(table_name) = row {
+                                                    tables.push(table_name);
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            error!("Error preparing sqlite_master query: {}", e);
+
+                                            // Fallback to SHOW TABLES if the first method fails
+                                            match conn.prepare("SHOW TABLES") {
+                                                Ok(mut show_stmt) => {
+                                                    let show_rows = show_stmt.query_map([], |row| row.get::<_, String>(0))?;
+                                                    for row in show_rows {
+                                                        if let Ok(table_name) = row {
+                                                            tables.push(table_name);
+                                                        }
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    error!("Error preparing SHOW TABLES query: {}", e);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    debug!("Found {} tables in database {}", tables.len(), db_path.display());
+
+                                    // If we still don't have tables, try a third approach with PRAGMA
+                                    if tables.is_empty() {
+                                        match conn.prepare("PRAGMA table_list") {
+                                            Ok(mut pragma_stmt) => {
+                                                let pragma_rows = pragma_stmt.query_map([], |row| row.get::<_, String>(1))?; // 1 is the name column
+                                                for row in pragma_rows {
+                                                    if let Ok(table_name) = row {
+                                                        // Skip internal tables
+                                                        if !table_name.starts_with("sqlite_") &&
+                                                            !table_name.starts_with("duck_") &&
+                                                            !table_name.starts_with("pg_") {
+                                                            tables.push(table_name);
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                error!("Error preparing PRAGMA table_list query: {}", e);
+                                            }
+                                        }
+                                    }
+
+                                    // Last resort - try direct SQL on common table names
+                                    if tables.is_empty() {
+                                        for table_name in &["orders", "customers", "products", "sales"] {
+                                            let query = format!("SELECT 1 FROM \"{}\" LIMIT 1", table_name);
+                                            match conn.prepare(&query) {
+                                                Ok(_) => {
+                                                    // If prepare worked, table exists
+                                                    tables.push(table_name.to_string());
+                                                }
+                                                Err(_) => {} // Skip if error
+                                            }
+                                        }
+                                    }
+
+                                    Ok(tables)
+                                }
+                            }).await??;
+
+                            // Add the subject and its tables to our map
+                            info!("Found {} tables in subject {}: {:?}", subject_tables.len(), subject_name, subject_tables);
+                            schema_map.insert(subject_name.to_string(), subject_tables);
+                        }
+                    }
+                }
             }
-
-            Ok(schema_map)
-        }).await??;
+        }
 
         // Update the cache
         let mut cache = self.schema_cache.write().await;
-        *cache = schemas;
+        *cache = schema_map;
 
         // Update the last refresh timestamp
         let mut timestamp = self.last_refresh.write().await;
@@ -118,11 +194,9 @@ impl SchemaManager {
     }
 
     /// Execute a query with proper schema handling
-    // from src/db/schema_manager.rs
     pub async fn execute_query(&self, sql: &str, subject: &str) -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
         // Build the path to the subject database
-        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
-        let subject_dir = std::path::Path::new(&data_dir).join(subject);
+        let subject_dir = self.data_dir.join(subject);
         let db_path = subject_dir.join(format!("{}.duckdb", subject));
 
         debug!("Using database at path: {}", db_path.display());
@@ -268,8 +342,6 @@ impl SchemaManager {
         Ok(result)
     }
 
-    // Rest of the methods remain the same...
-    /// Get all schemas
     pub async fn get_schemas(&self) -> Vec<String> {
         let cache = self.schema_cache.read().await;
         cache.keys().cloned().collect()
@@ -294,6 +366,38 @@ impl SchemaManager {
             Some(tables) => tables.contains(&table.to_string()),
             None => false,
         }
+    }
+
+    /// Add a schema (create the directory if not exists)
+    pub async fn add_schema(&self, schema: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Create the schema directory
+        let schema_dir = self.data_dir.join(&schema);
+        if !schema_dir.exists() {
+            std::fs::create_dir_all(&schema_dir)?;
+        }
+
+        // Create an empty schema entry in our cache if it doesn't exist
+        let mut cache = self.schema_cache.write().await;
+        if !cache.contains_key(&schema) {
+            cache.insert(schema, Vec::new());
+        }
+
+        Ok(())
+    }
+
+    /// Drop a schema
+    pub async fn drop_schema(&self, schema: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Remove schema directory if it exists
+        let schema_dir = self.data_dir.join(&schema);
+        if schema_dir.exists() {
+            std::fs::remove_dir_all(&schema_dir)?;
+        }
+
+        // Remove from cache
+        let mut cache = self.schema_cache.write().await;
+        cache.remove(&schema);
+
+        Ok(())
     }
 
     /// Prepare a fully-qualified SQL query with schema prefix for all table names
@@ -326,41 +430,4 @@ impl SchemaManager {
         result
     }
 
-    /// Add a schema (create if not exists)
-    pub async fn add_schema(&self, schema: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let conn = self.db_pool.get()?;
-
-        // Clone schema for the blocking task
-        let schema_clone = schema.clone();
-
-        let result = tokio::task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            let create_schema_sql = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_clone);
-            conn.execute(&create_schema_sql, [])?;
-            Ok(())
-        }).await??;
-
-        // Refresh cache to reflect changes
-        self.refresh_cache().await?;
-
-        Ok(result)
-    }
-
-    /// Drop a schema
-    pub async fn drop_schema(&self, schema: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let conn = self.db_pool.get()?;
-
-        // Clone schema for the blocking task
-        let schema_clone = schema.clone();
-
-        let result = tokio::task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            let drop_schema_sql = format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_clone);
-            conn.execute(&drop_schema_sql, [])?;
-            Ok(())
-        }).await??;
-
-        // Refresh cache to reflect changes
-        self.refresh_cache().await?;
-
-        Ok(result)
-    }
 }

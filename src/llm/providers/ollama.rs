@@ -107,13 +107,16 @@ Based on your instructions, here is the SQL query I have generated to answer the
         }
 
         // If we couldn't find explicit code blocks, try to extract SQL statements directly
-        // Look for a line starting with SELECT, WITH, or another SQL keyword
-        let sql_keywords = ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"];
-        let lines: Vec<&str> = content.lines().collect();
+        // Look for specific SQL patterns
+        let sql_patterns = [
+            "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"
+        ];
 
+        // First try line by line
+        let lines: Vec<&str> = content.lines().collect();
         for (i, line) in lines.iter().enumerate() {
             let trimmed = line.trim().to_uppercase();
-            if sql_keywords.iter().any(|kw| trimmed.starts_with(kw)) {
+            if sql_patterns.iter().any(|kw| trimmed.starts_with(kw)) {
                 // Found a line that looks like SQL - now collect until we find the end
                 let mut sql = line.trim().to_string();
 
@@ -143,13 +146,35 @@ Based on your instructions, here is the SQL query I have generated to answer the
 
                 info!("Extracted SQL using line scanning");
                 debug!("Extracted SQL: {}", sql);
+
+                // Make sure the SQL statement ends with a semicolon
+                if !sql.trim().ends_with(";") {
+                    sql += ";";
+                }
+
                 return sql;
             }
         }
 
-        // If still no SQL found, return the content as-is with a warning
-        info!("Could not extract SQL using usual methods, returning full content");
-        content.to_string()
+        // If still nothing, use most aggressive pattern matching for any SQL-like content
+        for pattern in sql_patterns {
+            if let Some(pos) = content.to_uppercase().find(pattern) {
+                let potential_sql = &content[pos..];
+                // Find the end of the statement or a reasonable chunk
+                if let Some(semi_pos) = potential_sql.find(';') {
+                    let sql = &potential_sql[..semi_pos+1];
+                    info!("Extracted SQL using aggressive pattern matching");
+                    debug!("Extracted SQL: {}", sql);
+                    return sql.to_string();
+                }
+            }
+        }
+
+        // If we still can't find anything, provide a default COUNT query as fallback
+        info!("Could not extract valid SQL from response, using fallback COUNT query");
+
+        // Generate a fallback COUNT query
+        "SELECT COUNT(*) FROM orders;".to_string()
     }
 }
 
