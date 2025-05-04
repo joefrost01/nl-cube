@@ -420,6 +420,41 @@ pub async fn nl_query(
     }
 }
 
+async fn sync_nl_query_handler(
+    state: State<Arc<AppState>>,
+    payload: Json<NlQueryRequest>
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Create a oneshot channel for the result
+    let (tx, rx) = oneshot::channel();
+
+    // Clone state since we need to move it into the new task
+    let state_clone = Arc::clone(&state);
+    let payload_clone = payload.0.clone();
+
+    // Spawn a blocking task to handle the query
+    // This avoids thread safety issues with DuckDB
+    tokio::task::spawn_blocking(move || {
+        let rt = tokio::runtime::Handle::current();
+
+        // Run the nl_query handler in the blocking task
+        let result = rt.block_on(async {
+            nl_query(State(state_clone), Json(payload_clone)).await
+        });
+
+        // Send the result back through the channel
+        let _ = tx.send(result);
+    });
+
+    // Wait for the result from the channel and convert to appropriate response
+    match rx.await {
+        Ok(result) => result,
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to process natural language query".to_string()
+        ))
+    }
+}
+
 fn extract_tables_from_sql(sql: &str) -> Vec<String> {
     let mut tables = Vec::new();
     let sql_upper = sql.to_uppercase();
