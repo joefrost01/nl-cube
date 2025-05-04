@@ -90,34 +90,36 @@ impl FileIngestor for ParquetIngestor {
         let absolute_path = path.canonicalize()
             .map_err(|e| IngestError::IoError(e))?;
 
-        // Use the environment DATABASE_URL variable to determine which file to open
-        let db_file = std::env::var("DATABASE_URL").unwrap_or_else(|_| "nl-cube.db".to_string());
-        tracing::info!("Opening database connection to: {}", db_file);
+        // Build the path to the subject database
+        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
+        let subject_dir = Path::new(&data_dir).join(subject);
+        if !subject_dir.exists() {
+            std::fs::create_dir_all(&subject_dir)
+                .map_err(|e| IngestError::IoError(e))?;
+        }
 
-        // Connect to the actual DuckDB database
-        let conn = Connection::open(&db_file)
+        let db_path = subject_dir.join(format!("{}.duckdb", subject));
+
+        tracing::info!("Opening subject database at: {}", db_path.display());
+
+        // Connect directly to the subject database
+        let conn = Connection::open(&db_path)
             .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
 
-        // Create the schema if it doesn't exist
-        let create_schema_sql = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", subject);
-        conn.execute(&create_schema_sql, [])
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to create schema: {}", e)))?;
-
         // Log database and table info
-        tracing::info!("Ingesting Parquet file to DuckDB. Schema: {}, Table: {}, File: {}",
-                       subject, table_name, absolute_path.display());
+        tracing::info!("Ingesting Parquet file to subject database. Table: {}, File: {}",
+                       table_name, absolute_path.display());
 
         // Create a more robust create table statement with explicit DROP IF EXISTS
-        let drop_sql = format!("DROP TABLE IF EXISTS \"{}\".\"{}\"", subject, table_name);
+        let drop_sql = format!("DROP TABLE IF EXISTS \"{}\"", table_name);
 
         // First drop the table if it exists
         conn.execute(&drop_sql, [])
             .map_err(|e| IngestError::DatabaseError(format!("Failed to drop existing table: {}", e)))?;
 
-        // Now use DuckDB's Parquet reading to create the table directly using the schema.table format
+        // Now use DuckDB's Parquet reading to create the table directly
         let create_sql = format!(
-            "CREATE TABLE \"{}\".\"{}\" AS SELECT * FROM read_parquet('{}') ",
-            subject,
+            "CREATE TABLE \"{}\" AS SELECT * FROM read_parquet('{}') ",
             table_name,
             absolute_path.to_string_lossy()
         );
@@ -128,11 +130,11 @@ impl FileIngestor for ParquetIngestor {
             .map_err(|e| IngestError::DatabaseError(format!("Failed to create table: {}", e)))?;
 
         // Verify table was created
-        let verify_sql = format!("SELECT COUNT(*) FROM \"{}\".\"{}\"", subject, table_name);
+        let verify_sql = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
 
         match conn.query_row(&verify_sql, [], |row| row.get::<_, i64>(0)) {
             Ok(count) => {
-                tracing::info!("Successfully created table {}.{} with {} rows", subject, table_name, count);
+                tracing::info!("Successfully created table {} with {} rows", table_name, count);
             }
             Err(e) => {
                 tracing::error!("Table creation verification failed: {}", e);

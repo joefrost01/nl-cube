@@ -168,14 +168,14 @@ impl FileIngestor for CsvIngestor {
 
         let db_path = subject_dir.join(format!("{}.duckdb", subject));
 
-        tracing::info!("Opening database connection to: {}", db_path.display());
+        tracing::info!("Opening subject database at: {}", db_path.display());
 
         // Connect directly to the subject database
         let conn = Connection::open(&db_path)
             .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
 
         // Log database and table info
-        tracing::info!("Ingesting file to DuckDB. Table: {}, File: {}",
+        tracing::info!("Ingesting file to subject database. Table: {}, File: {}",
                        table_name, absolute_path.display());
 
         // Create a more robust create table statement with explicit DROP IF EXISTS
@@ -207,29 +207,6 @@ impl FileIngestor for CsvIngestor {
             Err(e) => {
                 tracing::error!("Table creation verification failed: {}", e);
                 return Err(IngestError::DatabaseError(format!("Table verification failed: {}", e)));
-            }
-        }
-
-        // Try to look up the table in sqlite_master to verify
-        let master_sql = "SELECT name FROM sqlite_master WHERE type='table'";
-        let mut stmt = conn.prepare(master_sql)
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to prepare sqlite_master query: {}", e)))?;
-
-        let table_names: Result<Vec<String>, _> = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| IngestError::DatabaseError(format!("Failed to query sqlite_master: {}", e)))?
-            .collect();
-
-        match table_names {
-            Ok(names) => {
-                tracing::info!("Tables in database: {:?}", names);
-                if !names.contains(&table_name.to_string()) {
-                    tracing::warn!("Table {} not found through sqlite_master - this may be a timing issue",
-                                  table_name);
-                }
-            }
-            Err(e) => {
-                tracing::error!("Failed to collect table names: {}", e);
             }
         }
 

@@ -2,18 +2,21 @@
 use duckdb::Connection;
 use r2d2::ManageConnection;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 pub struct MultiDbConnectionManager {
     main_db_path: String,
+    data_dir: PathBuf,
     attached_dbs: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl MultiDbConnectionManager {
-    pub fn new(main_db_path: String) -> Self {
+    pub fn new(main_db_path: String, data_dir: PathBuf) -> Self {
         Self {
             main_db_path,
+            data_dir,
             attached_dbs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -24,6 +27,23 @@ impl MultiDbConnectionManager {
         dbs.insert(subject.to_string(), db_path.to_string());
         debug!("Registered subject database: {} at {}", subject, db_path);
     }
+
+    // Get the path to a subject database, creating parent directories if needed
+    pub fn get_subject_db_path(&self, subject: &str) -> PathBuf {
+        let subject_dir = self.data_dir.join(subject);
+        if !subject_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&subject_dir) {
+                warn!("Failed to create subject directory for {}: {}", subject, e);
+            }
+        }
+        subject_dir.join(format!("{}.duckdb", subject))
+    }
+
+    // Open a new connection to a specific subject database
+    pub fn open_subject_connection(&self, subject: &str) -> Result<Connection, duckdb::Error> {
+        let db_path = self.get_subject_db_path(subject);
+        Connection::open(&db_path)
+    }
 }
 
 impl ManageConnection for MultiDbConnectionManager {
@@ -31,29 +51,8 @@ impl ManageConnection for MultiDbConnectionManager {
     type Error = duckdb::Error;
 
     fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        // First connect to the main database
-        let conn = Connection::open(&self.main_db_path)?;
-
-        // Then attach any registered subject databases
-        let dbs = self.attached_dbs.lock().unwrap();
-        for (subject, db_path) in dbs.iter() {
-            let attach_sql = format!("ATTACH DATABASE '{}' AS {}", db_path, subject);
-            match conn.execute(&attach_sql, []) {
-                Ok(_) => {
-                    debug!("Attached database for subject: {}", subject);
-                }
-                Err(e) => {
-                    // If the error is about the database already being attached, that's fine
-                    if e.to_string().contains("already attached") {
-                        debug!("Database for subject {} is already attached", subject);
-                    } else {
-                        warn!("Failed to attach database for subject {}: {}", subject, e);
-                    }
-                }
-            }
-        }
-
-        Ok(conn)
+        // Connect to the main database
+        Connection::open(&self.main_db_path)
     }
 
     fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {

@@ -44,26 +44,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(&data_dir)?;
     }
 
-    // Initialize database connection pool
-    info!("Initializing DuckDB connection pool");
-    let manager = DuckDBConnectionManager::new(config.database.connection_string.clone());
+    info!("Initializing DuckDB connection pool with multi-db support");
+    let main_db_path = config.database.connection_string.clone();
+    let db_manager = DuckDBConnectionManager::new(main_db_path);
     let pool = Pool::builder()
         .max_size(config.database.pool_size as u32)
-        .build(manager)?;
+        .build(db_manager)?;
 
-    // Initialize the schema manager with the normal pool
-    let schema_manager = SchemaManager::new(pool.clone());
+    // Create the multi-db connection manager
+    let multi_db_manager = Arc::new(MultiDbConnectionManager::new(
+        config.database.connection_string.clone(),
+        data_dir.clone()
+    ));
 
+    // Initialize the schema manager with support for multi-db
+    let schema_manager = SchemaManager::with_multi_db(
+        pool.clone(),
+        Arc::clone(&multi_db_manager),
+        data_dir.clone()
+    );
 
     // Initialize LLM manager
     info!("Initializing LLM manager with backend: {}", config.llm.backend);
     let llm_manager = LlmManager::new(&config.llm)?;
 
-    // Create application state
-    let app_state = Arc::new(AppState::new(
+    // Create application state with the multi-db manager
+    let app_state = Arc::new(AppState::new_with_multi_db(
         config.clone(),
         pool,
+        multi_db_manager.clone(),
         llm_manager,
+        data_dir.clone()
     ));
 
     // Initialize schema cache

@@ -31,15 +31,38 @@ impl SchemaManager {
     }
 
     /// Create a new SchemaManager with the multi-database connection manager
-    /// Note: This constructor is here for future use but isn't being used yet
     pub fn with_multi_db(
-        db_pool: Pool<MultiDbConnectionManager>,
-        _conn_manager: Arc<MultiDbConnectionManager>,
-        _data_dir: PathBuf
+        db_pool: Pool<DuckDBConnectionManager>,
+        conn_manager: Arc<MultiDbConnectionManager>,
+        data_dir: PathBuf
     ) -> Self {
-        // We can't currently use a MultiDbConnectionManager pool directly,
-        // but this constructor is here for future use
-        unimplemented!("Multi-database connection manager not yet fully implemented");
+        // Create the schema manager with the main pool
+        let manager = Self {
+            db_pool,
+            schema_cache: RwLock::new(HashMap::new()),
+            last_refresh: RwLock::new(chrono::Utc::now()),
+        };
+
+        // Register existing subject databases
+        if data_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&data_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    if entry.path().is_dir() {
+                        if let Some(subject_name) = entry.file_name().to_str() {
+                            let db_path = conn_manager.get_subject_db_path(subject_name);
+                            if db_path.exists() {
+                                conn_manager.register_subject_db(
+                                    subject_name,
+                                    db_path.to_string_lossy().to_string().as_str()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        manager
     }
 
     /// Refresh the schema cache
@@ -95,96 +118,36 @@ impl SchemaManager {
     }
 
     /// Execute a query with proper schema handling
-    // from src/db/schema_manager.rs
-    pub async fn execute_query(&self, sql: &str, schema: &str) -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
-        // Get a connection from the pool
-        let conn = self.db_pool.get()?;
-
-        // Try to attach the subject database if it exists
+    // src/db/schema_manager.rs - the execute_query method
+    pub async fn execute_query(&self, sql: &str, subject: &str) -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
+        // Build the path to the subject database
         let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
-        let subject_dir = std::path::Path::new(&data_dir).join(schema);
-        let db_path = subject_dir.join(format!("{}.duckdb", schema));
+        let subject_dir = std::path::Path::new(&data_dir).join(subject);
+        let db_path = subject_dir.join(format!("{}.duckdb", subject));
 
-        if db_path.exists() {
-            // Try to attach the database
-            let attach_sql = format!("ATTACH DATABASE '{}' AS {}", db_path.to_string_lossy(), schema);
-            match conn.execute(&attach_sql, []) {
-                Ok(_) => debug!("Successfully attached database for subject: {}", schema),
-                Err(e) => {
-                    // If the database is already attached, that's fine
-                    if !e.to_string().contains("already attached") {
-                        warn!("Failed to attach database: {}", e);
-                        // Continue anyway as it might be a different issue
-                    }
-                }
-            }
-        }
+        debug!("Using database at path: {}", db_path.display());
 
-        // Try to set the search path to the schema
-        let set_search_path = conn.execute(&format!("SET search_path = '{}'", schema), []);
-        if let Err(e) = set_search_path {
-            warn!("Failed to set search_path: {}", e);
-        }
+        // We need to clone the SQL and database path to move into the blocking task
+        let sql_to_execute = sql.to_string();
+        let db_path_string = db_path.to_string_lossy().to_string();
 
-        // Prepare the SQL with schema qualification
-        let qualified_sql = self.qualify_sql(sql, schema).await;
-
-        // Use a clone of the qualified SQL to move into the task
-        let sql_to_execute = qualified_sql.clone();
-        // Clone the schema to avoid lifetime issues
-        let schema_clone = schema.to_string();
-
-        // Execute the query in a blocking task
+        // Execute the query in a blocking task with a fresh connection
         let result = tokio::task::spawn_blocking(move || -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
+            // Create a new connection for this query
+            let conn = match Connection::open(&db_path_string) {
+                Ok(conn) => conn,
+                Err(e) => {
+                    error!("Failed to open database at {}: {}", db_path_string, e);
+                    return Err(Box::new(e));
+                }
+            };
+
             // Prepare the statement
             let mut stmt = match conn.prepare(&sql_to_execute) {
                 Ok(stmt) => stmt,
                 Err(e) => {
                     error!("Failed to prepare statement: {}", e);
-
-                    // Additional diagnostic query to check schema existence
-                    match conn.prepare("SELECT schema_name FROM information_schema.schemata") {
-                        Ok(mut diag_stmt) => {
-                            let schemas: Vec<String> = match diag_stmt.query_map([], |row| row.get::<_, String>(0)) {
-                                Ok(rows) => rows.filter_map(Result::ok).collect(),
-                                Err(_) => Vec::new(),
-                            };
-                            debug!("Available schemas: {:?}", schemas);
-                        },
-                        Err(diag_err) => {
-                            debug!("Failed to run schema diagnostic: {}", diag_err);
-                        }
-                    }
-
-                    // Try to explicitly attach the database again
-                    let subject_dir = Path::new("data").join(&schema_clone);
-                    let db_path = subject_dir.join(format!("{}.duckdb", schema_clone));
-
-                    if db_path.exists() {
-                        debug!("Subject database exists at {}", db_path.display());
-
-                        let attach_sql = format!("ATTACH DATABASE '{}' AS {}", db_path.to_str().unwrap(), schema_clone);
-                        match conn.execute(&attach_sql, []) {
-                            Ok(_) => {
-                                debug!("Explicitly attached database for subject: {}", schema_clone);
-                                // Try to prepare the statement again
-                                match conn.prepare(&sql_to_execute) {
-                                    Ok(new_stmt) => new_stmt,
-                                    Err(retry_err) => {
-                                        error!("Still failed to prepare statement after explicit attach: {}", retry_err);
-                                        return Err(Box::new(retry_err));
-                                    }
-                                }
-                            },
-                            Err(attach_err) => {
-                                debug!("Failed to explicitly attach database: {}", attach_err);
-                                return Err(Box::new(e));
-                            }
-                        }
-                    } else {
-                        debug!("Subject database does not exist at {}", db_path.display());
-                        return Err(Box::new(e));
-                    }
+                    return Err(Box::new(e));
                 }
             };
 

@@ -276,11 +276,11 @@ pub async fn nl_query(
         Err(e) => {
             error!("Failed to get table metadata: {}", e);
             // Provide a fallback minimal schema description
-            format!("# DATABASE SCHEMA\n\nSchema: {}\nTable: orders\n\nColumns:\n- order_id (INTEGER)\n- customer_id (INTEGER)\n- order_date (DATE)\n- total_amount (DOUBLE)\n", target_subject)
+            format!("# DATABASE SCHEMA\n\nDatabase: {}\nTable: orders\n\nColumns:\n- order_id (INTEGER)\n- customer_id (INTEGER)\n- order_date (DATE)\n- total_amount (DOUBLE)\n", target_subject)
         }
     };
 
-    if table_metadata.trim() == "# DATABASE SCHEMA\n\nNo schemas found in database. Please upload data files first." {
+    if table_metadata.trim() == "# DATABASE SCHEMA\n\nNo databases found. Please upload data files first." {
         return Err((
             StatusCode::BAD_REQUEST,
             "No database tables found – upload some data first".into(),
