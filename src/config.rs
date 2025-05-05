@@ -17,8 +17,8 @@ pub struct WebConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct LlmConfig {
-    pub backend: String,  // "local", "remote", or "ollama"
-    pub model: String,    // Model name
+    pub backend: String, // "local", "remote", or "ollama"
+    pub model: String,   // Model name
     pub api_key: Option<String>,
     pub api_url: Option<String>,
 }
@@ -69,7 +69,8 @@ impl AppConfig {
 
             for location in default_locations {
                 if Path::new(location).exists() {
-                    config_builder = config_builder.add_source(File::new(location, config::FileFormat::Toml));
+                    config_builder =
+                        config_builder.add_source(File::new(location, config::FileFormat::Toml));
                     break;
                 }
             }

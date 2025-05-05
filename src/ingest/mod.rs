@@ -2,9 +2,9 @@ pub mod csv;
 pub mod parquet;
 pub mod schema;
 
-use std::path::Path;
 use std::error::Error;
 use std::fmt;
+use std::path::Path;
 
 #[derive(Debug)]
 pub enum IngestError {
@@ -33,7 +33,12 @@ impl From<std::io::Error> for IngestError {
 
 pub trait FileIngestor: Send + Sync {
     // Updated to include subject parameter
-    fn ingest(&self, path: &Path, table_name: &str, subject: &str) -> Result<schema::TableSchema, IngestError>;
+    fn ingest(
+        &self,
+        path: &Path,
+        table_name: &str,
+        subject: &str,
+    ) -> Result<schema::TableSchema, IngestError>;
 }
 
 pub struct IngestManager {
@@ -57,7 +62,12 @@ impl IngestManager {
     }
 
     // Updated to include subject parameter and use schema-based table access
-    pub fn ingest_file(&self, path: &Path, table_name: &str, subject: &str) -> Result<schema::TableSchema, IngestError> {
+    pub fn ingest_file(
+        &self,
+        path: &Path,
+        table_name: &str,
+        subject: &str,
+    ) -> Result<schema::TableSchema, IngestError> {
         let extension = path
             .extension()
             .and_then(|ext| ext.to_str())
@@ -67,8 +77,7 @@ impl IngestManager {
         let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
         let subject_dir = Path::new(&data_dir).join(subject);
         if !subject_dir.exists() {
-            std::fs::create_dir_all(&subject_dir)
-                .map_err(|e| IngestError::IoError(e))?;
+            std::fs::create_dir_all(&subject_dir).map_err(|e| IngestError::IoError(e))?;
         }
 
         // Log that we've ensured the subject directory exists
@@ -81,7 +90,6 @@ impl IngestManager {
             _ => Err(IngestError::UnsupportedFileType(extension.to_string())),
         }
     }
-
 }
 
 impl Default for IngestManager {

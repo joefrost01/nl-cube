@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DataType {
@@ -12,9 +12,7 @@ pub enum DataType {
     Unknown(String),
 }
 
-impl DataType {
-
-}
+impl DataType {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnSchema {
@@ -23,9 +21,7 @@ pub struct ColumnSchema {
     pub nullable: bool,
 }
 
-impl ColumnSchema {
-
-}
+impl ColumnSchema {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableSchema {
@@ -33,6 +29,4 @@ pub struct TableSchema {
     pub columns: Vec<ColumnSchema>,
 }
 
-impl TableSchema {
-
-}
+impl TableSchema {}

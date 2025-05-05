@@ -1,25 +1,25 @@
+use super::handlers;
+use super::state::AppState;
+use super::static_files::static_handler;
+use crate::web::handlers::api::NlQueryRequest;
+use axum::response::IntoResponse;
 use axum::{
-    routing::{get, post, delete},
-    Router,
     extract::{Multipart, Path, State},
     http::StatusCode,
+    routing::{delete, get, post},
     Json,
+    Router,
 };
 use std::sync::Arc;
 use tokio::sync::oneshot;
-use axum::response::IntoResponse;
-use crate::web::handlers::api::NlQueryRequest;
-use super::handlers;
-use super::static_files::static_handler;
-use super::state::AppState;
-use tracing::{error, info, warn, debug};
+use tracing::{debug, error, info, warn};
 
 // This is a special handler that spawns a new task to handle file uploads
 // This avoids Send/Sync issues with DuckDB
 async fn sync_upload_handler(
     state: State<Arc<AppState>>,
     path: Path<String>,
-    multipart: Multipart
+    multipart: Multipart,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
     info!("Starting file upload to subject: {}", path.0);
 
@@ -71,7 +71,7 @@ async fn sync_upload_handler(
                             Ok(_) => {
                                 info!("Successfully saved file: {}", file_name);
                                 file_paths.push(file_path);
-                            },
+                            }
                             Err(e) => {
                                 error!("Failed to save file {}: {}", file_name, e);
                                 return Err((StatusCode::INTERNAL_SERVER_ERROR,
@@ -120,7 +120,7 @@ async fn sync_upload_handler(
                          "Failed to process upload: channel error".to_string()))
                 }
             }
-        },
+        }
         Err(e) => {
             error!("Failed to extract multipart form: {}", e);
             Err((StatusCode::BAD_REQUEST, format!("Failed to parse upload: {}", e)))
@@ -142,7 +142,7 @@ async fn try_extract_multipart(multipart: &mut Multipart) -> Result<Vec<(String,
             Some(name) => name.to_string(),
             None => {
                 debug!("Skipping field without filename: {}", name);
-                continue
+                continue;
             }
         };
 
@@ -195,7 +195,7 @@ async fn try_extract_multipart(multipart: &mut Multipart) -> Result<Vec<(String,
 async fn process_uploaded_files(
     state: Arc<AppState>,
     subject: &str,
-    file_paths: &[std::path::PathBuf]
+    file_paths: &[std::path::PathBuf],
 ) -> Result<Vec<String>, (StatusCode, String)> {
     use tracing::{error, info};
 
@@ -230,7 +230,7 @@ async fn process_uploaded_files(
             Ok(_) => {
                 info!("Successfully ingested table {}.{}", subject, table_name);
                 uploaded_files.push(table_name);
-            },
+            }
             Err(e) => {
                 error!("Failed to ingest file {}: {}", dest_path.display(), e);
                 // Continue with other files even if one fails
@@ -288,7 +288,7 @@ async fn process_uploaded_files(
 // This avoids Send/Sync issues with DuckDB connections
 async fn sync_nl_query_handler(
     state: State<Arc<AppState>>,
-    payload: Json<NlQueryRequest>
+    payload: Json<NlQueryRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Create a oneshot channel for the result
     let (tx, rx) = oneshot::channel();
@@ -362,6 +362,6 @@ pub fn api_routes() -> Router<Arc<AppState>> {
                 .route("/reports/{id}", delete(handlers::api::delete_report))
 
                 // System status
-                .route("/status", get(handlers::api::system_status))
+                .route("/status", get(handlers::api::system_status)),
         )
 }

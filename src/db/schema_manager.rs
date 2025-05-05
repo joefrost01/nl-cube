@@ -1,8 +1,8 @@
 use crate::db::multi_db_pool::MultiDbConnectionManager;
-use duckdb::{Connection};
-use std::sync::Arc;
+use duckdb::Connection;
 use std::collections::HashMap;
-use std::path::{PathBuf};
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
@@ -20,7 +20,7 @@ impl SchemaManager {
     /// Create a new SchemaManager with the multi-database connection manager
     pub fn with_multi_db(
         conn_manager: Arc<MultiDbConnectionManager>,
-        data_dir: PathBuf
+        data_dir: PathBuf,
     ) -> Self {
         // Create the schema manager
         let manager = Self {
@@ -39,7 +39,7 @@ impl SchemaManager {
                             if db_path.exists() {
                                 conn_manager.register_subject_db(
                                     subject_name,
-                                    db_path.to_string_lossy().to_string().as_str()
+                                    db_path.to_string_lossy().to_string().as_str(),
                                 );
                             }
                         }
@@ -91,7 +91,7 @@ impl SchemaManager {
                                                     tables.push(table_name);
                                                 }
                                             }
-                                        },
+                                        }
                                         Err(e) => {
                                             error!("Error preparing sqlite_master query: {}", e);
 
@@ -104,7 +104,7 @@ impl SchemaManager {
                                                             tables.push(table_name);
                                                         }
                                                     }
-                                                },
+                                                }
                                                 Err(e) => {
                                                     error!("Error preparing SHOW TABLES query: {}", e);
                                                 }
@@ -129,7 +129,7 @@ impl SchemaManager {
                                                         }
                                                     }
                                                 }
-                                            },
+                                            }
                                             Err(e) => {
                                                 error!("Error preparing PRAGMA table_info(sqlite_master) query: {}", e);
                                             }
@@ -160,5 +160,4 @@ impl SchemaManager {
         info!("Schema cache refreshed successfully");
         Ok(())
     }
-
 }

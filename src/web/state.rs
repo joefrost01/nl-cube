@@ -1,7 +1,8 @@
 use crate::config::AppConfig;
-use crate::db::db_pool::{DuckDBConnectionManager};
+use crate::db::db_pool::DuckDBConnectionManager;
 use crate::db::multi_db_pool::MultiDbConnectionManager;
-use crate::db::schema_manager::SchemaManager;  // Add the new import
+use crate::db::schema_manager::SchemaManager;
+// Add the new import
 use crate::llm::LlmManager;
 use minijinja::Environment;
 use r2d2::Pool;
@@ -24,7 +25,6 @@ pub struct AppState {
 }
 
 impl AppState {
-
     // Add a constructor that supports multi-db
     pub fn new_with_multi_db(
         config: AppConfig,
@@ -44,7 +44,7 @@ impl AppState {
         // Create schema manager with multi-db support
         let schema_manager = SchemaManager::with_multi_db(
             Arc::clone(&multi_db_manager),
-            data_dir.clone()
+            data_dir.clone(),
         );
 
         Self {
@@ -292,7 +292,7 @@ impl AppState {
                                             }
                                         }
                                         metadata.push_str("\n");
-                                    },
+                                    }
                                     Err(_) => {
                                         // Last resort - fall back to the default schema
                                         metadata.push_str("#### Columns:\n");
@@ -304,7 +304,7 @@ impl AppState {
                                 }
                             }
                         }
-                    },
+                    }
                     Err(e) => {
                         metadata.push_str(&format!("Could not open database file: {}.\n\n", e));
                     }
@@ -337,7 +337,7 @@ fn get_tables_from_connection(conn: &duckdb::Connection) -> Result<Vec<String>, 
                     }
                 }
             }
-        },
+        }
         Err(_) => {
             // Try with sqlite_master as fallback
             let fallback = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'duck_%'";
@@ -353,7 +353,7 @@ fn get_tables_from_connection(conn: &duckdb::Connection) -> Result<Vec<String>, 
                             tables.push(table_name);
                         }
                     }
-                },
+                }
                 Err(_) => {
                     // Last resort: Try SHOW TABLES
                     match conn.prepare("SHOW TABLES") {
@@ -368,7 +368,7 @@ fn get_tables_from_connection(conn: &duckdb::Connection) -> Result<Vec<String>, 
                                     tables.push(table_name);
                                 }
                             }
-                        },
+                        }
                         Err(_) => { /* No more fallbacks */ }
                     }
                 }
@@ -407,7 +407,7 @@ fn get_column_info(conn: &duckdb::Connection, table_name: &str) -> Result<Vec<(S
                     columns.push(column_info);
                 }
             }
-        },
+        }
         Err(_) => {
             // Try with pragma_table_info as fallback
             let pragma_query = format!("PRAGMA table_info(\"{}\")", table_name);
@@ -430,7 +430,7 @@ fn get_column_info(conn: &duckdb::Connection, table_name: &str) -> Result<Vec<(S
                             columns.push(column_info);
                         }
                     }
-                },
+                }
                 Err(_) => {
                     // Last resort: get column info from a SELECT statement
                     let select_query = format!("SELECT * FROM \"{}\" LIMIT 0", table_name);
@@ -445,7 +445,7 @@ fn get_column_info(conn: &duckdb::Connection, table_name: &str) -> Result<Vec<(S
                                     columns.push((name.to_string(), "UNKNOWN".to_string(), true));
                                 }
                             }
-                        },
+                        }
                         Err(_) => { /* No more fallbacks */ }
                     }
                 }

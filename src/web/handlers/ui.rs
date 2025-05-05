@@ -1,6 +1,4 @@
-use axum::{
-    response::{Html, IntoResponse},
-};
+use axum::response::{Html, IntoResponse};
 
 use crate::web::static_files::get_embedded_file;
 

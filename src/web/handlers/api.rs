@@ -1,16 +1,16 @@
 use axum::{
     extract::{Path, State},
-    http::{StatusCode, header, HeaderMap, HeaderValue},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Instant;
-use std::fs;
 use tracing::{debug, error, info};
-use std::ops::Deref;
 
 use crate::web::state::AppState;
 
@@ -402,7 +402,7 @@ pub async fn nl_query(
     // Set content type for Arrow data
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("application/vnd.apache.arrow.file")
+        HeaderValue::from_static("application/vnd.apache.arrow.file"),
     );
 
     // Add metadata headers
@@ -551,7 +551,7 @@ pub async fn select_subject(
         Ok(_) => {
             info!("Selected subject: {}", subject);
             Ok(StatusCode::OK)
-        },
+        }
         Err(e) => {
             error!("Failed to set current subject: {}", e);
             Err((
@@ -577,7 +577,7 @@ fn get_tables_from_database(conn: &duckdb::Connection) -> Result<Vec<String>, Bo
                     tables.push(table_name);
                 }
             }
-        },
+        }
         Err(e) => {
             error!("Error preparing sqlite_master query: {}", e);
 
@@ -590,7 +590,7 @@ fn get_tables_from_database(conn: &duckdb::Connection) -> Result<Vec<String>, Bo
                             tables.push(table_name);
                         }
                     }
-                },
+                }
                 Err(e) => {
                     error!("Error preparing SHOW TABLES query: {}", e);
 
@@ -603,7 +603,7 @@ fn get_tables_from_database(conn: &duckdb::Connection) -> Result<Vec<String>, Bo
                                     tables.push(table_name);
                                 }
                             }
-                        },
+                        }
                         Err(e) => {
                             error!("Error preparing information_schema query: {}", e);
                         }
@@ -628,7 +628,7 @@ fn get_tables_from_database(conn: &duckdb::Connection) -> Result<Vec<String>, Bo
                         }
                     }
                 }
-            },
+            }
             Err(e) => {
                 error!("Error preparing PRAGMA table_list query: {}", e);
             }
@@ -758,7 +758,7 @@ pub async fn export_data(
     match format.as_str() {
         "csv" | "json" | "parquet" => {
             Err((StatusCode::NOT_IMPLEMENTED, format!("Export to {} not yet implemented", format)))
-        },
+        }
         _ => Err((StatusCode::BAD_REQUEST, "Unsupported export format".to_string())),
     }
 }

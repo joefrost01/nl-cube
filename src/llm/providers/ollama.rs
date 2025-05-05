@@ -111,7 +111,7 @@ Based on your instructions, here is the SQL query I have generated to answer the
                 let mut sql = line.trim().to_string();
 
                 // Collect subsequent lines that appear to be part of the SQL
-                for j in (i+1)..lines.len() {
+                for j in (i + 1)..lines.len() {
                     let next_line = lines[j].trim();
 
                     // Stop if we hit a markdown code block end
@@ -152,7 +152,7 @@ Based on your instructions, here is the SQL query I have generated to answer the
                 let potential_sql = &content[pos..];
                 // Find the end of the statement or a reasonable chunk
                 if let Some(semi_pos) = potential_sql.find(';') {
-                    let sql = &potential_sql[..semi_pos+1];
+                    let sql = &potential_sql[..semi_pos + 1];
                     info!("Extracted SQL using aggressive pattern matching");
                     debug!("Extracted SQL: {}", sql);
                     return sql.to_string();

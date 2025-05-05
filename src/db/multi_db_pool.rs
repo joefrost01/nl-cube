@@ -1,7 +1,7 @@
 use duckdb::Connection;
 use r2d2::ManageConnection;
 use std::collections::HashMap;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
@@ -37,7 +37,6 @@ impl MultiDbConnectionManager {
         }
         subject_dir.join(format!("{}.duckdb", subject))
     }
-
 }
 
 impl ManageConnection for MultiDbConnectionManager {

@@ -6,12 +6,12 @@ pub mod state;
 
 
 use crate::config::WebConfig;
-use axum::http::{StatusCode};
-use axum::response::{IntoResponse};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing::{info};
+use tracing::info;
 
 use self::routes::api_routes;
 use self::routes::ui_routes;

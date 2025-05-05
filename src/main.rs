@@ -1,9 +1,9 @@
+use crate::db::multi_db_pool::MultiDbConnectionManager;
 use clap::Parser;
 use r2d2::Pool;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info};
-use crate::db::multi_db_pool::MultiDbConnectionManager;
 
 mod config;
 mod db;
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the multi-db connection manager
     let multi_db_manager = Arc::new(MultiDbConnectionManager::new(
         config.database.connection_string.clone(),
-        data_dir.clone()
+        data_dir.clone(),
     ));
 
     // Initialize LLM manager
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pool,
         multi_db_manager.clone(),
         llm_manager,
-        data_dir.clone()
+        data_dir.clone(),
     ));
 
     // Initialize schema cache
