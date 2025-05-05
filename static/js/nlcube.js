@@ -694,21 +694,38 @@ async function handleFileUpload() {
 
 // Handle subject selection
 async function selectSubject(subjectName) {
-    appState.currentSubject = subjectName;
+    try {
+        // Call API to set the current subject
+        const response = await fetch(`${API_BASE_URL}/subjects/select/${subjectName}`, {
+            method: 'POST'
+        });
 
-    // Update UI
-    const currentSubjectNameEl = document.getElementById('currentSubjectName');
-    if (currentSubjectNameEl) {
-        currentSubjectNameEl.textContent = subjectName;
+        if (!response.ok) {
+            throw new Error(`Failed to select subject: ${response.statusText}`);
+        }
+
+        // Update local state
+        appState.currentSubject = subjectName;
+
+        // Update UI
+        const currentSubjectNameEl = document.getElementById('currentSubjectName');
+        if (currentSubjectNameEl) {
+            currentSubjectNameEl.textContent = subjectName;
+        }
+
+        const uploadBtn = document.getElementById('uploadFilesBtn');
+        if (uploadBtn) {
+            uploadBtn.disabled = false;
+        }
+
+        // Fetch subject details - now includes the tables list
+        await fetchSubjectDetails(subjectName);
+
+        showToast(`Subject "${subjectName}" selected`, 'success');
+    } catch (error) {
+        console.error(`Error selecting subject ${subjectName}:`, error);
+        showToast(`Failed to select subject: ${error.message}`, 'error');
     }
-
-    const uploadBtn = document.getElementById('uploadFilesBtn');
-    if (uploadBtn) {
-        uploadBtn.disabled = false;
-    }
-
-    // Fetch subject details - now includes the tables list
-    await fetchSubjectDetails(subjectName);
 }
 
 // Handle table view

@@ -344,6 +344,7 @@ pub fn api_routes() -> Router<Arc<AppState>> {
                 .route("/subjects/{subject}", get(handlers::api::get_subject))
                 .route("/subjects/{subject}", post(handlers::api::create_subject))
                 .route("/subjects/{subject}", delete(handlers::api::delete_subject))
+                .route("/subjects/select/{subject}", post(handlers::api::select_subject))
 
                 // File upload and processing - using sync handler to avoid send issues
                 .route("/upload/{subject}", post(sync_upload_handler))

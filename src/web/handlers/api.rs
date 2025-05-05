@@ -87,16 +87,21 @@ pub async fn execute_query(
     let start_time = Instant::now();
     info!("Executing SQL query: {}", payload.query);
 
-    // Find the subject used in the query or set a default
-    let subject_name = extract_schema_from_query(&payload.query)
-        .or_else(|| {
-            if let Some(first_subject) = state.subjects.try_read().ok().and_then(|s| s.first().cloned()) {
-                Some(first_subject)
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| "main".to_string());
+    // Always use the currently selected subject for direct table queries
+    let subject_name = match state.current_subject.read().await.clone() {
+        Some(subject) => subject,
+        None => extract_schema_from_query(&payload.query)
+            .or_else(|| {
+                if let Some(first_subject) = state.subjects.try_read().ok().and_then(|s| s.first().cloned()) {
+                    Some(first_subject)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "main".to_string())
+    };
+
+    info!("Using subject '{}' for direct query", subject_name);
 
     // Build the path to the subject database
     let subject_dir = state.data_dir.join(&subject_name);
@@ -487,8 +492,18 @@ async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (S
         ));
     }
 
-    // For now, just use the first subject
-    // In a more advanced version, you could determine this based on the query content
+    // Use the currently selected subject if available
+    if let Some(current_subject) = app_state.current_subject.read().await.as_ref() {
+        // Verify the subject still exists
+        if subjects.contains(current_subject) {
+            info!("Using currently selected subject '{}'", current_subject);
+            return Ok(current_subject.clone());
+        }
+    }
+
+    // If no subject is currently selected, use the first available one
+    // This is a fallback and should only happen if the UI hasn't set a subject yet
+    info!("No subject currently selected, using '{}' as default", subjects[0]);
     Ok(subjects[0].clone())
 }
 
@@ -601,6 +616,33 @@ pub async fn get_subject(
         tables,
         file_count,
     }))
+}
+
+pub async fn select_subject(
+    state: State<Arc<AppState>>,
+    path: Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let subject = path.0;
+    let subject_path = state.data_dir.join(&subject);
+
+    if !subject_path.exists() {
+        return Err((StatusCode::NOT_FOUND, "Subject not found".to_string()));
+    }
+
+    // Pass a reference to the subject
+    match state.set_current_subject(&subject).await {
+        Ok(_) => {
+            info!("Selected subject: {}", subject);
+            Ok(StatusCode::OK)
+        },
+        Err(e) => {
+            error!("Failed to set current subject: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to set current subject: {}", e)
+            ))
+        }
+    }
 }
 
 // Helper function to get tables from a database connection using multiple approaches

@@ -22,8 +22,9 @@ pub struct AppState {
     // Cache for subjects only, not schemas
     pub subjects: RwLock<Vec<String>>,
     pub startup_time: chrono::DateTime<chrono::Utc>,
-
-    // Add the schema manager
+    // Add current_subject to track which subject is selected
+    pub current_subject: RwLock<Option<String>>,
+    // Schema manager
     pub schema_manager: SchemaManager,
 }
 
@@ -61,8 +62,23 @@ impl AppState {
             multi_db_manager,
             subjects: RwLock::new(Vec::new()),
             startup_time: chrono::Utc::now(),
+            current_subject: RwLock::new(None), // Initialize as None
             schema_manager,
         }
+    }
+
+    pub async fn set_current_subject(&self, subject_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Verify subject exists
+        let subjects = self.subjects.read().await;
+        if !subjects.contains(&subject_name.to_string()) {
+            return Err(format!("Subject '{}' does not exist", subject_name).into());
+        }
+
+        // Set as current subject
+        let mut current = self.current_subject.write().await;
+        *current = Some(subject_name.to_string());
+
+        Ok(())
     }
 
     // Refreshes available subjects (data directories)
