@@ -99,8 +99,6 @@ impl CsvIngestor {
 unsafe impl Send for CsvIngestor {}
 unsafe impl Sync for CsvIngestor {}
 
-// In src/ingest/csv.rs, update the ingest method to properly verify table creation:
-
 // Replace this part of the ingest() method in CsvIngestor
 impl FileIngestor for CsvIngestor {
     fn ingest(
