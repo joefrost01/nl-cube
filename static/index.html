@@ -15,6 +15,28 @@
 
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/nlcube.css">
+    <style>
+        /* Navbar height adjustments */
+        .navbar {
+            min-height: 60px;
+            padding: 0.25rem 1rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar-brand {
+            font-size: 1.25rem;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        /* Sidebar adjustments for new navbar height */
+        @media (min-width: 992px) {
+            #leftSidebar {
+                height: calc(100vh - 76px);
+                top: 76px;
+            }
+        }
+    </style>
 
     <!-- Preload WASM files -->
     <link rel="preload" href="https://cdn.jsdelivr.net/npm/@finos/perspective-viewer/dist/wasm/perspective-viewer.wasm" as="fetch" type="application/wasm" crossorigin="anonymous" />
@@ -25,60 +47,45 @@
 </head>
 <body>
 <!-- Navbar -->
-<nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary py-1">
     <div class="container-fluid">
-        <a class="navbar-brand" href="#">
-            <img src="/static/images/logo.png" alt="NL-Cube Logo" width="40" height="40" class="rounded me-2">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            <img src="/static/images/logo.png" alt="NL-Cube Logo" width="50" height="50" class="rounded me-2">
             <span>NL-Cube</span>
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
+        <button class="navbar-toggler py-1" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
                 aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarContent">
-            <!-- Subjects Dropdown -->
+            <!-- Databases and Reports Dropdowns -->
             <ul class="navbar-nav me-auto">
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="subjectsDropdown" role="button"
+                    <a class="nav-link dropdown-toggle py-1" href="#" id="subjectsDropdown" role="button"
                        data-bs-toggle="dropdown" aria-expanded="false">
-                        Subjects
+                        Databases
                     </a>
                     <ul class="dropdown-menu" id="subjectsDropdownMenu" aria-labelledby="subjectsDropdown">
-                        <li><span class="dropdown-item-text">Loading subjects...</span></li>
+                        <li><span class="dropdown-item-text">Loading databases...</span></li>
                     </ul>
                 </li>
 
-                <!-- Create Subject Button -->
-                <li class="nav-item">
-                    <button class="btn btn-sm btn-outline-light ms-2" id="createSubjectBtn">
-                        <i class="bi bi-plus-circle"></i> New Subject
-                    </button>
+                <li class="nav-item dropdown ms-2">
+                    <a class="nav-link dropdown-toggle py-1" href="#" id="reportsDropdown" role="button"
+                       data-bs-toggle="dropdown" aria-expanded="false">
+                        Reports
+                    </a>
+                    <ul class="dropdown-menu" id="reportsDropdownMenu" aria-labelledby="reportsDropdown">
+                        <li><span class="dropdown-item-text">Loading reports...</span></li>
+                    </ul>
                 </li>
             </ul>
 
             <!-- Right side items -->
             <ul class="navbar-nav ms-auto">
-                <!-- Reports Dropdown -->
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="reportsDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false">
-                        Reports
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end" id="reportsDropdownMenu" aria-labelledby="reportsDropdown">
-                        <li><span class="dropdown-item-text">No saved reports</span></li>
-                    </ul>
-                </li>
-
-                <!-- Save Report Button -->
-                <li class="nav-item ms-2">
-                    <button class="btn btn-outline-light" id="saveReportBtn" disabled>
-                        <i class="bi bi-save"></i> Save Report
-                    </button>
-                </li>
-
                 <!-- Theme Toggle -->
-                <li class="nav-item ms-3">
-                    <button class="btn btn-sm btn-outline-light" id="themeToggleBtn">
+                <li class="nav-item">
+                    <button class="btn btn-sm btn-outline-light py-1 px-2" id="themeToggleBtn">
                         <i class="bi bi-moon-fill"></i>
                     </button>
                 </li>
@@ -88,10 +95,10 @@
 </nav>
 
 <!-- Main Container -->
-<div class="container-fluid" id="mainContainer">
+<div class="container-fluid" id="mainContainer" style="padding-top: 0.25rem;">
     <div class="row">
         <!-- Left Sidebar -->
-        <div class="col-lg-3 sidebar" id="leftSidebar">
+        <div class="col-lg-3 sidebar" id="leftSidebar" style="margin-top: 0;">
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Ask Question</span>
@@ -119,14 +126,14 @@
                 </div>
             </div>
 
-            <!-- Subject Details Card -->
+            <!-- Database Details Card -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <span>Current Subject: <span id="currentSubjectName">None</span></span>
+                    <span>Current Database: <span id="currentSubjectName">None</span></span>
                 </div>
                 <div class="card-body">
                     <div id="subjectDetailContent">
-                        <p class="text-muted">Select a subject to see details</p>
+                        <p class="text-muted">Select a database to see details</p>
                     </div>
 
                     <!-- Upload Files Button -->
@@ -152,45 +159,23 @@
         </div>
 
         <!-- Right Main Content -->
-        <div class="col-lg-9" id="mainContent">
+        <div class="col-lg-9" id="mainContent" style="margin-top: 8px; margin-left: 0;">
             <!-- Query Results -->
             <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span id="resultsTitle">Query Results</span>
-                    <div>
-                        <button class="btn btn-sm btn-outline-secondary me-2" id="exportDataBtn" disabled>
-                            <i class="bi bi-download"></i> Export
-                        </button>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                    id="viewTypeDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                View As
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="viewTypeDropdown">
-                                <li><a class="dropdown-item" href="#" data-view-type="datagrid">Table</a></li>
-                                <li><a class="dropdown-item" href="#" data-view-type="d3_y_bar">Bar Chart</a></li>
-                                <li><a class="dropdown-item" href="#" data-view-type="d3_y_line">Line Chart</a></li>
-                                <li><a class="dropdown-item" href="#" data-view-type="d3_y_scatter">Scatter Plot</a></li>
-                                <li><a class="dropdown-item" href="#" data-view-type="d3_treemap">Treemap</a></li>
-                                <li><a class="dropdown-item" href="#" data-view-type="d3_heatmap">Heatmap</a></li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-body p-0" style="height: calc(100vh - 200px);">
+                <div class="card-body p-0" style="height: calc(100vh - 180px);">
                     <perspective-viewer id="perspectiveViewer"></perspective-viewer>
                 </div>
             </div>
 
             <!-- Query History Panel -->
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
                     <span>Query History</span>
-                    <button class="btn btn-sm btn-outline-secondary" id="clearHistoryBtn">
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="clearHistoryBtn">
                         <i class="bi bi-trash"></i> Clear
                     </button>
                 </div>
-                <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                <div class="card-body p-0" style="max-height: 180px; overflow-y: auto;">
                     <div id="queryHistoryList" class="list-group">
                         <div class="text-muted text-center py-3">No query history yet</div>
                     </div>
@@ -201,18 +186,18 @@
 </div>
 
 <!-- Modals -->
-<!-- Create Subject Modal -->
+<!-- Create Database Modal -->
 <div class="modal fade" id="createSubjectModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Create New Subject</h5>
+                <h5 class="modal-title">Create New Database</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="createSubjectForm">
                     <div class="mb-3">
-                        <label for="newSubjectName" class="form-label">Subject Name</label>
+                        <label for="newSubjectName" class="form-label">Database Name</label>
                         <input type="text" class="form-control" id="newSubjectName" required
                                placeholder="Enter a name (alphanumeric with underscores)">
                         <div class="form-text">This will create a new data area to organize related datasets.</div>

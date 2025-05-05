@@ -13,6 +13,7 @@ import perspective from "https://cdn.jsdelivr.net/npm/@finos/perspective@2.5.0/d
 import UploadManager from './upload-utils.js';
 import QueryManager from './query-utils.js';
 import PerspectiveManager from './perspective-utils.js';
+import ReportsManager from './reports-utils.js';
 
 // Constants
 const API_BASE_URL = '/api';
@@ -23,49 +24,18 @@ const appState = {
     currentSubject: null,
     currentQuery: null,
     subjects: [],
-    reports: [],
-    queryHistory: [],  // Added explicit queryHistory array
+    queryHistory: [],
     currentTheme: localStorage.getItem('theme') || DEFAULT_THEME
 };
 
-// Initialize Perspective viewer
-async function initPerspectiveViewer() {
-    try {
-        const viewer = document.getElementById('perspectiveViewer');
-        if (!viewer) {
-            console.error('Perspective viewer element not found');
-            return false;
-        }
-
-        // Create empty table to start
-        const emptyTable = await window.perspective.worker().table({
-            message: ['No data loaded. Enter a query or select a dataset.']
-        });
-
-        // Load the empty table
-        await viewer.load(emptyTable);
-
-        // Store reference for cleanup
-        window.perspectiveTable = emptyTable;
-
-        // Set theme based on current app theme
-        viewer.setAttribute('theme', appState.currentTheme === 'dark' ? 'Pro Dark' : 'Pro Light');
-
-        // Set default plugin
-        viewer.setAttribute('plugin', 'datagrid');
-
-        console.log('Perspective viewer initialized');
-        return true;
-    } catch (error) {
-        console.error('Error initializing Perspective viewer:', error);
-        return false;
-    }
-}
+// Make appState available globally for other components
+window.appState = appState;
 
 // Initialize managers
 let perspectiveManager;
 let queryManager;
 let uploadManager;
+let reportsManager;
 
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', initApp);
@@ -90,7 +60,7 @@ async function initApp() {
         await Promise.all([
             fetchSubjects(),
             fetchSchema(),
-            fetchReports()
+            fetchAndUpdateReports()
         ]);
 
         // Apply saved theme
@@ -123,17 +93,14 @@ function initManagers() {
             runButton.disabled = false;
             runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
 
-            // Update results title
-            document.getElementById('resultsTitle').textContent = 'Query Results';
-
-            // Enable save report button
-            document.getElementById('saveReportBtn').disabled = false;
-
             // Update current query in app state
             appState.currentQuery = queryItem;
 
             // Update the history UI
             updateQueryHistoryUI();
+
+            // Refresh reports menu to enable save option
+            fetchAndUpdateReports();
         },
         onSqlGenerated: (sql) => {
             // Update SQL display
@@ -218,12 +185,66 @@ async function initPerspective() {
         // Initialize the manager with the perspective module
         await perspectiveManager.initialize(perspectiveModule.default);
 
+        // Initialize Reports Manager with the Perspective Manager
+        reportsManager = new ReportsManager({
+            baseUrl: API_BASE_URL,
+            perspectiveManager: perspectiveManager,
+            onReportSaved: (report) => {
+                showToast(`Report "${report.name}" saved successfully`, 'success');
+                // Update reports dropdown
+                reportsManager.updateReportsUI(
+                    document.getElementById('reportsDropdownMenu'),
+                    (reportId) => loadReport(reportId),
+                    () => {
+                        const modal = new bootstrap.Modal(document.getElementById('saveReportModal'));
+                        modal.show();
+                    }
+                );
+            },
+            onReportLoaded: (report) => {
+                // Update UI when report is loaded
+                document.getElementById('nlQueryInput').value = report.question || '';
+                document.getElementById('generatedSqlDisplay').textContent = report.sql || '';
+            },
+            onError: (error) => {
+                showToast(`Report operation failed: ${error.message}`, 'error');
+            }
+        });
+
         console.log('Perspective initialized');
         return true;
     } catch (error) {
         console.error('Failed to initialize Perspective:', error);
         showToast('Error initializing visualization engine', 'error');
         return false;
+    }
+}
+
+// Fetch reports and update the UI
+async function fetchAndUpdateReports() {
+    try {
+        // Fetch the reports
+        const reports = await reportsManager.fetchReports();
+
+        // Update the UI with the reports and callbacks
+        reportsManager.updateReportsUI(
+            document.getElementById('reportsDropdownMenu'),
+            (reportId) => loadReport(reportId),
+            () => {
+                if (appState.currentQuery) {
+                    const modal = new bootstrap.Modal(document.getElementById('saveReportModal'));
+                    modal.show();
+                } else {
+                    showToast('Run a query before saving a report', 'error');
+                }
+            }
+        );
+
+        return reports;
+    } catch (error) {
+        console.error('Error fetching reports:', error);
+        showToast('Failed to load saved reports', 'error');
+        return [];
     }
 }
 
@@ -242,11 +263,14 @@ function setupEventListeners() {
         }
     });
 
-    // Create subject
-    document.getElementById('createSubjectBtn').addEventListener('click', function() {
-        const modal = new bootstrap.Modal(document.getElementById('createSubjectModal'));
-        modal.show();
-    });
+    // Create subject/database - this button has been moved to the dropdown
+    // but we'll keep the event listener for backward compatibility
+    if (document.getElementById('createSubjectBtn')) {
+        document.getElementById('createSubjectBtn').addEventListener('click', function() {
+            const modal = new bootstrap.Modal(document.getElementById('createSubjectModal'));
+            modal.show();
+        });
+    }
     document.getElementById('createSubjectSubmitBtn').addEventListener('click', handleCreateSubject);
 
     // Upload files
@@ -267,11 +291,15 @@ function setupEventListeners() {
     });
     document.getElementById('uploadFilesSubmitBtn').addEventListener('click', handleFileUpload);
 
-    // Save report
-    document.getElementById('saveReportBtn').addEventListener('click', function() {
-        const modal = new bootstrap.Modal(document.getElementById('saveReportModal'));
-        modal.show();
-    });
+    // Save report - keep for backward compatibility
+    const saveReportBtn = document.getElementById('saveReportBtn');
+    if (saveReportBtn) {
+        saveReportBtn.addEventListener('click', function() {
+            const modal = new bootstrap.Modal(document.getElementById('saveReportModal'));
+            modal.show();
+        });
+    }
+
     document.getElementById('saveReportSubmitBtn').addEventListener('click', handleSaveReport);
 
     // Clear history
@@ -282,18 +310,6 @@ function setupEventListeners() {
 
     // Theme toggle
     document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
-
-    // View type dropdown
-    document.querySelectorAll('[data-view-type]').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            const viewType = this.getAttribute('data-view-type');
-            perspectiveManager.setPlugin(viewType);
-        });
-    });
-
-    // Export data
-    document.getElementById('exportDataBtn').addEventListener('click', handleExportData);
 
     // Add event listener for Enter key in query input
     document.getElementById('nlQueryInput').addEventListener('keydown', function(e) {
@@ -410,28 +426,6 @@ async function fetchSchema() {
     }
 }
 
-// Fetch saved reports
-async function fetchReports() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/reports`);
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch reports: ${response.statusText}`);
-        }
-
-        const reports = await response.json();
-        appState.reports = reports;
-        updateReportsUI();
-
-        return reports;
-    } catch (error) {
-        console.error('Error fetching reports:', error);
-        showToast('Failed to load saved reports', 'error');
-        return [];
-    }
-}
-
-
 /**
  * Check if Perspective is truly available and ready to use
  * @returns {boolean} - Whether Perspective is fully available
@@ -471,7 +465,6 @@ async function handleNlQuery(e) {
         const runButton = document.getElementById('runQueryBtn');
         runButton.disabled = true;
         runButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
-        document.getElementById('resultsTitle').textContent = 'Running Query...';
 
         // Execute the query
         const response = await fetch(`${API_BASE_URL}/nl-query`, {
@@ -544,13 +537,12 @@ async function handleNlQuery(e) {
             showFallbackDisplay(totalCount, generatedSql, executionTime);
         }
 
-        // Update results title
-        document.getElementById('resultsTitle').textContent = `Results: ${totalCount} rows`;
-
         // Reset button and enable save button
         runButton.disabled = false;
         runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
-        document.getElementById('saveReportBtn').disabled = false;
+
+        // Update reports menu to enable save option
+        fetchAndUpdateReports();
 
     } catch (error) {
         // Handle errors
@@ -562,7 +554,6 @@ async function handleNlQuery(e) {
         runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
 
         // Show error
-        document.getElementById('resultsTitle').textContent = 'Query Failed';
         showToast(`Query failed: ${error.message}`, 'error');
     }
 }
@@ -663,18 +654,18 @@ async function loadArrowData(arrowBuffer) {
     }
 }
 
-// Create a new subject
+// Create a new database
 async function handleCreateSubject() {
     const subjectName = document.getElementById('newSubjectName').value.trim();
 
     if (!subjectName) {
-        showToast('Subject name is required', 'error');
+        showToast('Database name is required', 'error');
         return;
     }
 
-    // Validate subject name (alphanumeric with underscores)
+    // Validate database name (alphanumeric with underscores)
     if (!/^[a-zA-Z0-9_]+$/.test(subjectName)) {
-        showToast('Subject name must contain only letters, numbers, and underscores', 'error');
+        showToast('Database name must contain only letters, numbers, and underscores', 'error');
         return;
     }
 
@@ -694,11 +685,11 @@ async function handleCreateSubject() {
         // Clear input
         document.getElementById('newSubjectName').value = '';
 
-        // Refresh subjects list and select the new one
+        // Refresh databases list and select the new one
         await fetchSubjects();
         selectSubject(subjectName);
 
-        showToast(`Subject "${subjectName}" created successfully`, 'success');
+        showToast(`Database "${subjectName}" created successfully`, 'success');
     } catch (error) {
         console.error('Error creating subject:', error);
         showToast(`Failed to create subject: ${error.message}`, 'error');
@@ -708,7 +699,7 @@ async function handleCreateSubject() {
 // Upload files to a subject
 async function handleFileUpload() {
     if (!appState.currentSubject) {
-        showToast('Please select a subject first', 'error');
+        showToast('Please select a database first', 'error');
         return;
     }
 
@@ -748,8 +739,15 @@ async function selectSubject(subjectName) {
     appState.currentSubject = subjectName;
 
     // Update UI
-    document.getElementById('currentSubjectName').textContent = subjectName;
-    document.getElementById('uploadFilesBtn').disabled = false;
+    const currentSubjectNameEl = document.getElementById('currentSubjectName');
+    if (currentSubjectNameEl) {
+        currentSubjectNameEl.textContent = subjectName;
+    }
+
+    const uploadBtn = document.getElementById('uploadFilesBtn');
+    if (uploadBtn) {
+        uploadBtn.disabled = false;
+    }
 
     // Fetch subject details
     await fetchSubjectDetails(subjectName);
@@ -758,9 +756,6 @@ async function selectSubject(subjectName) {
 // Handle table view
 async function viewTable(tableName) {
     try {
-        // Update results title
-        document.getElementById('resultsTitle').textContent = `Table: ${tableName}`;
-
         // Get a connection and query the table directly
         const response = await fetch(`${API_BASE_URL}/query`, {
             method: 'POST',
@@ -797,8 +792,8 @@ async function viewTable(tableName) {
         // Load the mock data
         await perspectiveManager.loadJsonData(mockData);
 
-        // Enable save button
-        document.getElementById('saveReportBtn').disabled = false;
+        // Enable save by updating reports menu
+        fetchAndUpdateReports();
 
     } catch (error) {
         console.error(`Error viewing table ${tableName}:`, error);
@@ -823,29 +818,16 @@ async function handleSaveReport() {
     }
 
     try {
-        // Get current Perspective viewer configuration
-        const viewerConfig = await perspectiveManager.saveConfig();
-
         const reportData = {
             name: name,
             category: category,
             description: description,
             question: appState.currentQuery.question,
-            sql: appState.currentQuery.sql,
-            config: viewerConfig
+            sql: appState.currentQuery.sql
         };
 
-        const response = await fetch(`${API_BASE_URL}/reports`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(reportData)
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to save report: ${response.statusText}`);
-        }
+        // Use reports manager to save the report
+        await reportsManager.saveReport(reportData);
 
         // Close modal
         bootstrap.Modal.getInstance(document.getElementById('saveReportModal')).hide();
@@ -855,51 +837,82 @@ async function handleSaveReport() {
         document.getElementById('reportCategory').value = '';
         document.getElementById('reportDescription').value = '';
 
-        // Refresh reports list
-        await fetchReports();
-
-        showToast(`Report "${name}" saved successfully`, 'success');
     } catch (error) {
         console.error('Error saving report:', error);
         showToast(`Failed to save report: ${error.message}`, 'error');
     }
 }
 
-// Handle export data
-async function handleExportData() {
+// Load a saved report
+async function loadReport(reportId) {
     try {
-        // Export using Perspective manager
-        const csv = await perspectiveManager.exportToCsv();
+        // Use the reports manager to load the report
+        const report = await reportsManager.loadReport(reportId);
 
-        // Create a download link
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `nlcube-export-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        if (!report) {
+            throw new Error('Failed to load report');
+        }
 
-        showToast('Data exported successfully', 'success');
+        // Update current query in app state
+        appState.currentQuery = {
+            question: report.question || 'Loaded from saved report',
+            sql: report.sql
+        };
+
+        // Create mock data based on the report
+        const mockData = {
+            'Report Name': [report.name],
+            'Category': [report.category],
+            'Query': [report.question || 'N/A'],
+            'SQL': [report.sql]
+        };
+
+        // Load the mock data
+        await perspectiveManager.loadJsonData(mockData);
+
+        // Refresh reports menu to enable save option
+        fetchAndUpdateReports();
+
+        return report;
     } catch (error) {
-        console.error('Error exporting data:', error);
-        showToast(`Export failed: ${error.message}`, 'error');
+        console.error('Error loading report:', error);
+        showToast(`Failed to load report: ${error.message}`, 'error');
+        return null;
     }
 }
 
 // UI Updates
 
-// Update subjects dropdown
+// Update databases dropdown
 function updateSubjectsUI() {
-    const subjectsMenu = document.getElementById('subjectsDropdownMenu');
-    subjectsMenu.innerHTML = '';
+    const databasesMenu = document.getElementById('subjectsDropdownMenu');
+    databasesMenu.innerHTML = '';
 
+    // Add "New" option at the top
+    const newItem = document.createElement('li');
+    const newLink = document.createElement('a');
+    newLink.className = 'dropdown-item fw-bold';
+    newLink.href = '#';
+    newLink.innerHTML = '<i class="bi bi-plus-circle"></i> New Database';
+    newLink.addEventListener('click', () => {
+        const modal = new bootstrap.Modal(document.getElementById('createSubjectModal'));
+        modal.show();
+    });
+    newItem.appendChild(newLink);
+    databasesMenu.appendChild(newItem);
+
+    // Add divider if there are subjects
+    if (appState.subjects.length > 0) {
+        const divider = document.createElement('li');
+        divider.innerHTML = '<hr class="dropdown-divider">';
+        databasesMenu.appendChild(divider);
+    }
+
+    // Add all existing databases
     if (appState.subjects.length === 0) {
         const item = document.createElement('li');
-        item.innerHTML = '<span class="dropdown-item-text">No subjects available</span>';
-        subjectsMenu.appendChild(item);
+        item.innerHTML = '<span class="dropdown-item-text text-muted">No databases available</span>';
+        databasesMenu.appendChild(item);
     } else {
         appState.subjects.forEach(subject => {
             const item = document.createElement('li');
@@ -909,7 +922,7 @@ function updateSubjectsUI() {
             link.textContent = subject;
             link.addEventListener('click', () => selectSubject(subject));
             item.appendChild(link);
-            subjectsMenu.appendChild(item);
+            databasesMenu.appendChild(item);
         });
     }
 }
@@ -919,7 +932,7 @@ function updateSubjectDetailsUI(subjectDetails) {
     const detailsContainer = document.getElementById('subjectDetailContent');
 
     if (!subjectDetails) {
-        detailsContainer.innerHTML = '<p class="text-muted">Select a subject to see details</p>';
+        detailsContainer.innerHTML = '<p class="text-muted">Select a database to see details</p>';
         return;
     }
 
@@ -963,6 +976,8 @@ function updateSubjectDetailsUI(subjectDetails) {
 // Update schema display
 function updateSchemaUI(schema) {
     const schemaContainer = document.getElementById('schemaViewerContent');
+
+    if (!schemaContainer) return;
 
     if (!schema) {
         schemaContainer.innerHTML = '<p class="text-muted">No schema available</p>';
@@ -1027,108 +1042,6 @@ function updateSchemaUI(schema) {
     schemaContainer.innerHTML = html;
 }
 
-// Update reports dropdown
-function updateReportsUI() {
-    const reportsMenu = document.getElementById('reportsDropdownMenu');
-    reportsMenu.innerHTML = '';
-
-    if (appState.reports.length === 0) {
-        const item = document.createElement('li');
-        item.innerHTML = '<span class="dropdown-item-text">No saved reports</span>';
-        reportsMenu.appendChild(item);
-        return;
-    }
-
-    // Group reports by category
-    const reportsByCategory = {};
-
-    appState.reports.forEach(report => {
-        const category = report.category || 'Uncategorized';
-
-        if (!reportsByCategory[category]) {
-            reportsByCategory[category] = [];
-        }
-
-        reportsByCategory[category].push(report);
-    });
-
-    // Add to dropdown
-    for (const category in reportsByCategory) {
-        // Add category header
-        const header = document.createElement('li');
-        header.innerHTML = `<h6 class="dropdown-header">${category}</h6>`;
-        reportsMenu.appendChild(header);
-
-        // Add reports in this category
-        reportsByCategory[category].forEach(report => {
-            const item = document.createElement('li');
-            const link = document.createElement('a');
-            link.className = 'dropdown-item';
-            link.href = '#';
-            link.textContent = report.name;
-            link.addEventListener('click', () => loadReport(report.id));
-            item.appendChild(link);
-            reportsMenu.appendChild(item);
-        });
-
-        // Add divider
-        const divider = document.createElement('li');
-        divider.innerHTML = '<hr class="dropdown-divider">';
-        reportsMenu.appendChild(divider);
-    }
-
-    // Remove last divider
-    if (reportsMenu.lastChild && reportsMenu.lastChild.querySelector('hr')) {
-        reportsMenu.removeChild(reportsMenu.lastChild);
-    }
-}
-
-// Load a saved report
-async function loadReport(reportId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/reports/${reportId}`);
-
-        if (!response.ok) {
-            throw new Error(`Failed to load report: ${response.statusText}`);
-        }
-
-        const report = await response.json();
-
-        // Update UI
-        document.getElementById('nlQueryInput').value = report.question || '';
-        document.getElementById('generatedSqlDisplay').textContent = report.sql || '';
-        document.getElementById('resultsTitle').textContent = `Results: ${report.name}`;
-
-        // Update the current query details
-        appState.currentQuery = {
-            question: report.question || 'Loaded from saved report',
-            sql: report.sql
-        };
-
-        // Create mock data based on the report
-        const mockData = {
-            'Report Name': [report.name],
-            'Category': [report.category],
-            'Query': [report.question || 'N/A'],
-            'SQL': [report.sql]
-        };
-
-        // Load the mock data
-        await perspectiveManager.loadJsonData(mockData);
-
-        // Apply saved view configuration if available
-        if (report.config) {
-            await perspectiveManager.restoreConfig(report.config);
-        }
-
-        return report;
-    } catch (error) {
-        console.error('Error loading report:', error);
-        showToast(`Failed to load report: ${error.message}`, 'error');
-        return null;
-    }
-}
-
 // Add query to history
 function addToQueryHistory(question, sql, executionTime, rowCount) {
     const historyItem = {
@@ -1152,6 +1065,8 @@ function addToQueryHistory(question, sql, executionTime, rowCount) {
 // Update query history UI
 function updateQueryHistoryUI() {
     const historyContainer = document.getElementById('queryHistoryList');
+    if (!historyContainer) return;
+
     const history = appState.queryHistory;
 
     if (history.length === 0) {
