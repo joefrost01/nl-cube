@@ -1,0 +1,33 @@
+name: Build and Publish
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # 1) Install Rust and build the back-end
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test
+        run: |
+          cargo test
+
+      - name: Build (release mode)
+        run: |
+          cargo build --release
+
+      # 2) Upload the artifact (the compiled binary) for reference
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nl-cube-binary
+          path: target/release/nl-cube
