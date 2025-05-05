@@ -12,7 +12,7 @@ use crate::web::handlers::api::NlQueryRequest;
 use super::handlers;
 use super::static_files::static_handler;
 use super::state::AppState;
-use tracing::{error, info};
+use tracing::{error, info, warn, debug};
 
 // This is a special handler that spawns a new task to handle file uploads
 // This avoids Send/Sync issues with DuckDB
@@ -21,6 +21,8 @@ async fn sync_upload_handler(
     path: Path<String>,
     multipart: Multipart
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    info!("Starting file upload to subject: {}", path.0);
+
     // Create a oneshot channel for the result
     let (tx, rx) = oneshot::channel();
 
@@ -31,11 +33,18 @@ async fn sync_upload_handler(
     // Process the multipart form in the current thread
     let mut multipart_data = multipart;
 
-    // Extract all fields from the multipart form
+    // Add boundaries and debug information to multipart extraction
+    info!("Extracting files from multipart form");
     let result = try_extract_multipart(&mut multipart_data).await;
 
     match result {
         Ok(extracted_files) => {
+            if extracted_files.is_empty() {
+                return Err((StatusCode::BAD_REQUEST, "No valid files found in upload".to_string()));
+            }
+
+            info!("Successfully extracted {} files from multipart form", extracted_files.len());
+
             // Spawn a blocking task to handle the upload with the extracted files
             tokio::task::spawn_blocking(move || {
                 let rt = tokio::runtime::Handle::current();
@@ -44,33 +53,57 @@ async fn sync_upload_handler(
                 let result = rt.block_on(async {
                     // Create a temporary directory to store the files
                     let temp_dir = std::env::temp_dir().join("nl-cube-uploads");
-                    let _ = std::fs::create_dir_all(&temp_dir);
+                    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+                        error!("Failed to create temp directory: {}", e);
+                        return Err((StatusCode::INTERNAL_SERVER_ERROR,
+                                    format!("Failed to create temporary directory: {}", e)));
+                    }
+                    info!("Created temporary directory at {}", temp_dir.display());
 
                     let mut file_paths = Vec::new();
 
                     // Save files to disk
                     for (file_name, content) in &extracted_files {
                         let file_path = temp_dir.join(file_name);
+                        info!("Saving file to {}", file_path.display());
 
                         match tokio::fs::write(&file_path, content).await {
                             Ok(_) => {
+                                info!("Successfully saved file: {}", file_name);
                                 file_paths.push(file_path);
                             },
                             Err(e) => {
+                                error!("Failed to save file {}: {}", file_name, e);
                                 return Err((StatusCode::INTERNAL_SERVER_ERROR,
                                             format!("Failed to save file {}: {}", file_name, e)));
                             }
                         }
                     }
 
+                    if file_paths.is_empty() {
+                        return Err((StatusCode::BAD_REQUEST, "No files were saved".to_string()));
+                    }
+
                     // Now call the API handler with the saved files
-                    let uploaded_files = process_uploaded_files(state_clone, &path_str, &file_paths).await?;
+                    info!("Processing {} saved files", file_paths.len());
+                    let uploaded_files = match process_uploaded_files(state_clone, &path_str, &file_paths).await {
+                        Ok(files) => files,
+                        Err(e) => {
+                            error!("Failed to process uploaded files: {:?}", e);
+                            return Err(e);
+                        }
+                    };
 
                     // Clean up temp files
                     for path in file_paths {
-                        let _ = tokio::fs::remove_file(path).await;
+                        if let Err(e) = tokio::fs::remove_file(&path).await {
+                            warn!("Failed to remove temporary file {}: {}", path.display(), e);
+                        } else {
+                            debug!("Removed temporary file: {}", path.display());
+                        }
                     }
 
+                    info!("Upload processing completed successfully");
                     Ok(Json(uploaded_files))
                 });
 
@@ -79,8 +112,14 @@ async fn sync_upload_handler(
             });
 
             // Wait for the result from the channel
-            rx.await.unwrap_or(Err((StatusCode::INTERNAL_SERVER_ERROR,
-                                    "Failed to process upload".to_string())))
+            match rx.await {
+                Ok(result) => result,
+                Err(e) => {
+                    error!("Channel error during upload processing: {}", e);
+                    Err((StatusCode::INTERNAL_SERVER_ERROR,
+                         "Failed to process upload: channel error".to_string()))
+                }
+            }
         },
         Err(e) => {
             error!("Failed to extract multipart form: {}", e);
@@ -90,14 +129,21 @@ async fn sync_upload_handler(
 }
 
 async fn try_extract_multipart(multipart: &mut Multipart) -> Result<Vec<(String, Vec<u8>)>, Box<dyn std::error::Error + Send + Sync>> {
-
     let mut files = Vec::new();
 
     // Process each field in the multipart form
     while let Some(field) = multipart.next_field().await? {
+        // Log the field name and content-type for debugging
+        let name = field.name().unwrap_or("unnamed").to_string();
+        let content_type = field.content_type().unwrap_or("").to_string();
+        debug!("Processing field: {}, content-type: {}", name, content_type);
+
         let file_name = match field.file_name() {
             Some(name) => name.to_string(),
-            None => continue, // Skip fields without a filename
+            None => {
+                debug!("Skipping field without filename: {}", name);
+                continue
+            }
         };
 
         // Sanitize filename
@@ -106,11 +152,28 @@ async fn try_extract_multipart(multipart: &mut Multipart) -> Result<Vec<(String,
             .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
             .collect::<String>();
 
+        debug!("Reading content for file: {}", safe_name);
+
         // Read the field content
-        let content = field.bytes().await?;
+        let content = match field.bytes().await {
+            Ok(bytes) => {
+                debug!("Successfully read {} bytes for file {}", bytes.len(), safe_name);
+                bytes.to_vec()
+            },
+            Err(e) => {
+                error!("Error reading field bytes for {}: {}", safe_name, e);
+                return Err(Box::new(e));
+            }
+        };
 
         // Store the file data
-        files.push((safe_name, content.to_vec()));
+        files.push((safe_name, content));
+    }
+
+    if files.is_empty() {
+        debug!("No files extracted from multipart form");
+    } else {
+        debug!("Extracted {} files from multipart form", files.len());
     }
 
     Ok(files)
