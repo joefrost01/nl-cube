@@ -294,7 +294,7 @@ function setupEventListeners() {
     document.getElementById('saveReportSubmitBtn').addEventListener('click', handleSaveReport);
 
     // Theme toggle
-    document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
+    //document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
 
     // Add event listener for Enter key in query input
     document.getElementById('nlQueryInput').addEventListener('keydown', function(e) {
@@ -329,27 +329,27 @@ function applyTheme(theme) {
     document.documentElement.setAttribute('data-bs-theme', theme);
 
     // Apply to Perspective viewer using the manager
-    if (perspectiveManager) {
-        perspectiveManager.setTheme(theme);
-    }
-
-    // Update theme toggle button
-    const themeBtn = document.getElementById('themeToggleBtn');
-    const themeIcon = themeBtn.querySelector('i');
-
-    if (theme === 'dark') {
-        themeIcon.className = 'bi bi-sun-fill';
-    } else {
-        themeIcon.className = 'bi bi-moon-fill';
-    }
-
-    // Add transition class to all elements
-    document.body.classList.add('theme-transition');
-
-    // Remove transition class after transition completes
-    setTimeout(() => {
-        document.body.classList.remove('theme-transition');
-    }, 300);
+    // if (perspectiveManager) {
+    //     perspectiveManager.setTheme(theme);
+    // }
+    //
+    // // Update theme toggle button
+    // const themeBtn = document.getElementById('themeToggleBtn');
+    // const themeIcon = themeBtn.querySelector('i');
+    //
+    // if (theme === 'dark') {
+    //     themeIcon.className = 'bi bi-sun-fill';
+    // } else {
+    //     themeIcon.className = 'bi bi-moon-fill';
+    // }
+    //
+    // // Add transition class to all elements
+    // document.body.classList.add('theme-transition');
+    //
+    // // Remove transition class after transition completes
+    // setTimeout(() => {
+    //     document.body.classList.remove('theme-transition');
+    // }, 300);
 }
 
 // API Calls

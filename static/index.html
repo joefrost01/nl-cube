@@ -86,59 +86,60 @@
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarContent">
-            <!-- Databases and Reports Dropdowns -->
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle py-1" href="#" id="subjectsDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false">
-                        Databases
-                    </a>
-                    <ul class="dropdown-menu" id="subjectsDropdownMenu" aria-labelledby="subjectsDropdown">
-                        <li><span class="dropdown-item-text">Loading databases...</span></li>
-                    </ul>
-                </li>
 
-                <li class="nav-item dropdown ms-2">
-                    <a class="nav-link dropdown-toggle py-1" href="#" id="reportsDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false">
-                        Reports
-                    </a>
-                    <ul class="dropdown-menu" id="reportsDropdownMenu" aria-labelledby="reportsDropdown">
-                        <li><span class="dropdown-item-text">Loading reports...</span></li>
-                    </ul>
-                </li>
-
-                <!-- NEW: Query History Dropdown -->
-                <li class="nav-item dropdown ms-2">
-                    <a class="nav-link dropdown-toggle py-1" href="#" id="historyDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false">
-                        History
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-lg-end query-history-dropdown" id="queryHistoryDropdown" aria-labelledby="historyDropdown">
-                        <li>
-                            <div class="d-flex justify-content-between align-items-center px-3 py-2">
-                                <h6 class="mb-0">Recent Queries</h6>
-                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="clearHistoryBtn">
-                                    <i class="bi bi-trash"></i> Clear
-                                </button>
-                            </div>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <div id="queryHistoryList">
-                            <li><span class="dropdown-item-text text-muted">No query history yet</span></li>
-                        </div>
-                    </ul>
-                </li>
-            </ul>
 
             <!-- Right side items -->
             <ul class="navbar-nav ms-auto">
-                <!-- Theme Toggle -->
-                <li class="nav-item">
-                    <button class="btn btn-sm btn-outline-light py-1 px-2" id="themeToggleBtn">
-                        <i class="bi bi-moon-fill"></i>
-                    </button>
-                </li>
+<!--                &lt;!&ndash; Theme Toggle &ndash;&gt;-->
+<!--                <li class="nav-item">-->
+<!--                    <button class="btn btn-sm btn-outline-light py-1 px-2" id="themeToggleBtn">-->
+<!--                        <i class="bi bi-moon-fill"></i>-->
+<!--                    </button>-->
+<!--                </li>-->
+                <!-- Databases and Reports Dropdowns -->
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle py-1" href="#" id="subjectsDropdown" role="button"
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            Databases
+                        </a>
+                        <ul class="dropdown-menu" id="subjectsDropdownMenu" aria-labelledby="subjectsDropdown">
+                            <li><span class="dropdown-item-text">Loading databases...</span></li>
+                        </ul>
+                    </li>
+
+                    <li class="nav-item dropdown ms-2">
+                        <a class="nav-link dropdown-toggle py-1" href="#" id="reportsDropdown" role="button"
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            Reports
+                        </a>
+                        <ul class="dropdown-menu" id="reportsDropdownMenu" aria-labelledby="reportsDropdown">
+                            <li><span class="dropdown-item-text">Loading reports...</span></li>
+                        </ul>
+                    </li>
+
+                    <!-- NEW: Query History Dropdown -->
+                    <li class="nav-item dropdown ms-2">
+                        <a class="nav-link dropdown-toggle py-1" href="#" id="historyDropdown" role="button"
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            History
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-lg-end query-history-dropdown" id="queryHistoryDropdown" aria-labelledby="historyDropdown">
+                            <li>
+                                <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                                    <h6 class="mb-0">Recent Queries</h6>
+                                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="clearHistoryBtn">
+                                        <i class="bi bi-trash"></i> Clear
+                                    </button>
+                                </div>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <div id="queryHistoryList">
+                                <li><span class="dropdown-item-text text-muted">No query history yet</span></li>
+                            </div>
+                        </ul>
+                    </li>
+                </ul>
             </ul>
         </div>
     </div>
