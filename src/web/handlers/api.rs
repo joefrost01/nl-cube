@@ -104,6 +104,27 @@ pub async fn execute_query(
 
     info!("Using subject database at: {}", db_path.display());
 
+    // Make sure subject directory exists
+    if !subject_dir.exists() {
+        error!("Subject directory does not exist: {}", subject_dir.display());
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("Subject '{}' not found", subject_name)
+        ));
+    }
+
+    // Create the database file if it doesn't exist yet
+    if !db_path.exists() {
+        info!("Creating new database file at: {}", db_path.display());
+        std::fs::create_dir_all(&subject_dir).map_err(|e| {
+            error!("Failed to create subject directory: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create subject directory: {}", e)
+            )
+        })?;
+    }
+
     // Make a direct connection to the subject database
     let conn = match duckdb::Connection::open(&db_path) {
         Ok(conn) => conn,
