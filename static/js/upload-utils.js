@@ -201,12 +201,5 @@ class UploadManager {
         return isValidMime || isValidExtension;
     }
 
-    /**
-     * Cancel all pending uploads
-     */
-    cancelAll() {
-        this.queue = [];
-        this.onComplete();
-    }
 }
 export default UploadManager;

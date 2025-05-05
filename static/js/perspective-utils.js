@@ -343,38 +343,6 @@ class PerspectiveManager {
         }
     }
 
-    /**
-     * Clean up resources when done
-     */
-    async cleanup() {
-        if (!this.isInitialized) {
-            return;
-        }
-
-        try {
-            // Reset the viewer first
-            await this.reset();
-
-            // Then clean up any remaining resources
-            if (this.table) {
-                try {
-                    await this.table.delete();
-                } catch (e) {
-                    console.warn('Error cleaning up table:', e);
-                }
-                this.table = null;
-            }
-
-            if (this.worker) {
-                // No explicit way to close the worker in Perspective API
-                this.worker = null;
-            }
-
-            this.isInitialized = false;
-        } catch (error) {
-            console.error('Error cleaning up Perspective resources:', error);
-        }
-    }
 }
 
 // Export the PerspectiveManager class
