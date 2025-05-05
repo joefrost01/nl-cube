@@ -1,0 +1,39 @@
+""" 
+### Instructions:
+Your task is to convert a question into a SQL query, given a Postgres database schema.
+Adhere to these rules:
+- **Deliberately go through the question and database schema word by word** to appropriately answer the question
+- **Use Table Aliases** to prevent ambiguity. For example, `SELECT table1.col1, table2.col1 FROM table1 JOIN table2 ON table1.id = table2.id`.
+- When creating a ratio, always cast the numerator as float
+
+### Input:
+Generate a SQL query that answers the question `Calculate the return rate by region for orders placed in 2025. Return rate is defined as the number of returned orders divided by the total number of orders. Show the region and return rate, ordered by return rate descending for all regions`.
+This query will run on a database whose schema is represented in this string:
+CREATE TABLE orders (
+                        order_id UUID,
+                        customer_id UUID,
+                        order_date DATE,
+                        product_category STRING,
+                        product_id STRING,
+
+                        region STRING,
+                        quantity INTEGER,
+                        unit_price DOUBLE,
+                        discount DOUBLE,
+                        delivery_date DATE,
+                        courier_name STRING
+);
+
+CREATE TABLE returns (
+                         return_id UUID,
+                         order_id UUID,
+                         return_date DATE,
+                         return_reason STRING,
+                         refund_amount DOUBLE
+);
+
+
+### Response:
+Based on your instructions, here is the SQL query I have generated to answer the question `Calculate the return rate by region for orders placed in 2025. Return rate is defined as the number of returned orders divided by the total number of orders. Show the region and return rate, ordered by return rate descending for all regions`:
+```sql
+"""

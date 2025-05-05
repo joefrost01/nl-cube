@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NL-Cube - Offline</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .logo {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            padding: 30px;
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #8ab4f8;
+        }
+
+        p {
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .btn {
+            background-color: #8ab4f8;
+            color: #121212;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #6ca0f8;
+        }
+
+        .status {
+            margin-top: 20px;
+            font-style: italic;
+            font-size: 0.9em;
+            color: #bbbbbb;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <img src="images/logo.png" alt="NL-Cube Logo" class="logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB4PSIxMCIgeT0iMTAiIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgcng9IjEwIiBmaWxsPSIjOGFiNGY4Ii8+PHRleHQgeD0iNTAiIHk9IjYwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMzAiIGZpbGw9IiMxMjEyMTIiIHRleHQtYW5jaG9yPSJtaWRkbGUiPk5MPC90ZXh0Pjwvc3ZnPg==';">
+    <h1>You're Offline</h1>
+    <p>NL-Cube is currently unable to connect to the server. Some features may be limited until your connection is restored.</p>
+    <p>If you were previously working with data, you may still be able to access cached information.</p>
+    <button class="btn" id="retryBtn">Retry Connection</button>
+    <div class="status" id="connectionStatus">Checking connection...</div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const retryBtn = document.getElementById('retryBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+
+        // Check connection status initially
+        updateConnectionStatus();
+
+        // Set up retry button
+        retryBtn.addEventListener('click', function() {
+            connectionStatus.textContent = 'Checking connection...';
+            retryBtn.disabled = true;
+
+            // Try to fetch the main page
+            fetch('/')
+                .then(response => {
+                    if (response.ok) {
+                        // Connection restored, redirect to home page
+                        window.location.href = '/';
+                    } else {
+                        updateConnectionStatus();
+                        retryBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    connectionStatus.textContent = 'Still offline. Please try again later.';
+                    retryBtn.disabled = false;
+                });
+        });
+
+        // Listen for online/offline events
+        window.addEventListener('online', function() {
+            connectionStatus.textContent = 'Connection restored! Redirecting...';
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1500);
+        });
+
+        window.addEventListener('offline', function() {
+            connectionStatus.textContent = 'You are offline. Waiting for connection...';
+        });
+
+        function updateConnectionStatus() {
+            if (navigator.onLine) {
+                connectionStatus.textContent = 'Your device is online, but the NL-Cube server is unreachable.';
+            } else {
+                connectionStatus.textContent = 'Your device is offline. Please check your internet connection.';
+            }
+        }
+    });
+</script>
+</body>
+</html>
