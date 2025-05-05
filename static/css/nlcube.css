@@ -1,15 +1,4 @@
-/* Special styling for the perspective container */
-.card-body.p-0 {
-    border-radius: 0.375rem;
-    overflow: hidden; /* Ensures contents respect border radius */
-}
-
-/* Fix for Firefox which sometimes has issues with border-radius overflow */
-@-moz-document url-prefix() {
-    .card-body.p-0 perspective-viewer {
-        border-radius: 0.375rem;
-    }
-}/* Main Layout Styles */
+/* Main Layout Styles */
 body {
     overflow-x: hidden;
     background-color: var(--bs-body-bg);
@@ -46,8 +35,8 @@ body {
 
 /* Main container */
 #mainContainer {
-    padding: 0.5rem; /* Reduced from 1rem */
-    margin-top: 0.25rem; /* Reduced from 0.5rem */
+    padding: 0.5rem;
+    margin-top: 0.25rem;
 }
 
 /* Sidebar */
@@ -66,20 +55,22 @@ body {
 
 /* Cards */
 .card {
-    margin-bottom: 0.5rem; /* Reduced from 1rem */
+    margin-bottom: 0.5rem;
     border-radius: 0.375rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    overflow: hidden; /* Ensure contents respect border radius */
+    overflow: hidden;
 }
 
 .card-header {
     font-weight: 600;
     background-color: rgba(var(--bs-primary-rgb), 0.05);
+    padding: 0.75rem 1rem;
 }
 
 .card-body {
     border-bottom-left-radius: 0.375rem;
     border-bottom-right-radius: 0.375rem;
+    padding: 1rem;
 }
 
 /* Perspective Viewer */
@@ -92,6 +83,12 @@ perspective-viewer {
     --d3fc-tooltip--background: var(--bs-body-bg);
     --d3fc-tooltip--color: var(--bs-body-color);
     --d3fc-treedata--labels: var(--bs-body-color);
+}
+
+/* Perspective container - full height */
+.perspective-container {
+    height: calc(100vh - 85px);
+    margin-bottom: 0;
 }
 
 /* Query Input */
@@ -110,133 +107,40 @@ perspective-viewer {
     white-space: pre-wrap;
 }
 
-/* Schema viewer */
-#schemaViewerContent {
-    max-height: 300px;
+/* Tables list */
+.tables-list {
+    max-height: calc(100vh - 260px);
     overflow-y: auto;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 0.75rem;
 }
 
-.schema-table {
-    margin-bottom: 1rem;
-    border-top: 1px solid var(--bs-border-color);
-    padding-top: 0.5rem;
+.table-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70%;
 }
 
-.schema-table-name {
-    font-weight: bold;
-    color: var(--bs-primary);
+/* Query history dropdown */
+.query-history-dropdown {
+    max-height: 500px;
+    overflow-y: auto;
+    width: 400px;
+    padding: 0;
 }
 
-.schema-column {
-    margin-left: 1rem;
-}
-
-.schema-column-name {
-    color: var(--bs-body-color);
-}
-
-.schema-column-type {
-    color: var(--bs-gray-600);
-    font-style: italic;
-}
-
-/* Query history */
 .query-history-item {
-    padding: 0.375rem 0.5rem; /* Reduced from 0.5rem */
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgba(var(--bs-border-color-rgb), 0.2);
     cursor: pointer;
-    border-left: 3px solid transparent;
-    transition: all 0.2s ease;
-    margin-bottom: 1px; /* Add a small gap between items */
+    transition: background-color 0.2s;
 }
 
 .query-history-item:hover {
     background-color: rgba(var(--bs-primary-rgb), 0.05);
-    border-left-color: var(--bs-primary);
 }
 
-.query-time {
-    font-size: 0.7rem; /* Reduced from 0.75rem */
-    color: var(--bs-gray-600);
-}
-
-.query-text {
-    font-weight: 500;
-    font-size: 0.85rem; /* Added smaller font size */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 90%; /* Limit width to prevent overflow */
-}
-
-/* Upload Progress */
-#uploadProgress {
-    height: 0.5rem;
-}
-
-/* Status messages */
-.status-success {
-    color: var(--bs-success);
-}
-
-.status-error {
-    color: var(--bs-danger);
-}
-
-/* Animations */
-.fade-in {
-    animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-/* Utilities */
-.cursor-pointer {
-    cursor: pointer;
-}
-
-/* File type badges */
-.file-badge {
-    display: inline-block;
-    padding: 0.1rem 0.4rem;
-    border-radius: 3px;
-    font-size: 0.7rem;
-    margin-right: 0.3rem;
-    font-weight: 600;
-}
-
-.file-badge-csv {
-    background-color: rgba(var(--bs-success-rgb), 0.1);
-    color: var(--bs-success);
-}
-
-.file-badge-parquet {
-    background-color: rgba(var(--bs-info-rgb), 0.1);
-    color: var(--bs-info);
-}
-
-/* Table list */
-.table-list {
-    list-style-type: none;
-    padding-left: 0;
-}
-
-.table-list-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    margin-bottom: 0.25rem;
-    background-color: rgba(var(--bs-secondary-rgb), 0.05);
-}
-
-.table-list-item:hover {
-    background-color: rgba(var(--bs-secondary-rgb), 0.1);
+.query-history-item:active {
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
 }
 
 /* For dark mode / light mode transitions */
@@ -264,7 +168,36 @@ perspective-viewer {
     padding: 0.5rem 1rem;
 }
 
-/* Make sure the perspective viewer expands fully */
-.card-body perspective-viewer {
-    min-height: 70vh;
+/* Upload Progress */
+#uploadProgress {
+    height: 0.5rem;
+}
+
+/* Status messages */
+.status-success {
+    color: var(--bs-success);
+}
+
+.status-error {
+    color: var(--bs-danger);
+}
+
+/* File type badges */
+.file-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    margin-right: 0.3rem;
+    font-weight: 600;
+}
+
+.file-badge-csv {
+    background-color: rgba(var(--bs-success-rgb), 0.1);
+    color: var(--bs-success);
+}
+
+.file-badge-parquet {
+    background-color: rgba(var(--bs-info-rgb), 0.1);
+    color: var(--bs-info);
 }

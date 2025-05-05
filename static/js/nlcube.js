@@ -59,7 +59,6 @@ async function initApp() {
         // Load initial data
         await Promise.all([
             fetchSubjects(),
-            fetchSchema(),
             fetchAndUpdateReports()
         ]);
 
@@ -83,9 +82,6 @@ function initManagers() {
             const runButton = document.getElementById('runQueryBtn');
             runButton.disabled = true;
             runButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
-
-            // Show active query in UI
-            document.getElementById('resultsTitle').textContent = 'Running Query...';
         },
         onQueryComplete: (queryItem, metadata) => {
             // Update UI to show completion
@@ -147,10 +143,12 @@ function initManagers() {
         onComplete: () => {
             // Refresh data after uploads complete
             fetchSubjectDetails(appState.currentSubject);
-            fetchSchema();
 
             // Show completion toast
             showToast('File upload complete', 'success');
+
+            // Re-enable the upload button
+            document.getElementById('uploadFilesSubmitBtn').disabled = false;
         }
     });
 }
@@ -263,14 +261,15 @@ function setupEventListeners() {
         }
     });
 
-    // Create subject/database - this button has been moved to the dropdown
-    // but we'll keep the event listener for backward compatibility
-    if (document.getElementById('createSubjectBtn')) {
-        document.getElementById('createSubjectBtn').addEventListener('click', function() {
-            const modal = new bootstrap.Modal(document.getElementById('createSubjectModal'));
-            modal.show();
-        });
-    }
+    // Clear history button in dropdown
+    document.getElementById('clearHistoryBtn').addEventListener('click', function(e) {
+        e.stopPropagation(); // Prevent dropdown from closing
+        appState.queryHistory = [];
+        updateQueryHistoryUI();
+        showToast('Query history cleared', 'success');
+    });
+
+    // Create subject/database
     document.getElementById('createSubjectSubmitBtn').addEventListener('click', handleCreateSubject);
 
     // Upload files
@@ -291,22 +290,8 @@ function setupEventListeners() {
     });
     document.getElementById('uploadFilesSubmitBtn').addEventListener('click', handleFileUpload);
 
-    // Save report - keep for backward compatibility
-    const saveReportBtn = document.getElementById('saveReportBtn');
-    if (saveReportBtn) {
-        saveReportBtn.addEventListener('click', function() {
-            const modal = new bootstrap.Modal(document.getElementById('saveReportModal'));
-            modal.show();
-        });
-    }
-
+    // Save report
     document.getElementById('saveReportSubmitBtn').addEventListener('click', handleSaveReport);
-
-    // Clear history
-    document.getElementById('clearHistoryBtn').addEventListener('click', function() {
-        queryManager.clearHistory();
-        updateQueryHistoryUI();
-    });
 
     // Theme toggle
     document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
@@ -325,6 +310,9 @@ function initUI() {
     // Create tooltips
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
     [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+    // Initialize query history UI
+    updateQueryHistoryUI();
 }
 
 // Toggle between light and dark themes
@@ -406,26 +394,6 @@ async function fetchSubjectDetails(subjectName) {
     }
 }
 
-// Fetch database schema
-async function fetchSchema() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/schema`);
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch schema: ${response.statusText}`);
-        }
-
-        const schema = await response.json();
-        updateSchemaUI(schema);
-
-        return schema;
-    } catch (error) {
-        console.error('Error fetching schema:', error);
-        showToast('Failed to load database schema', 'error');
-        return null;
-    }
-}
-
 /**
  * Check if Perspective is truly available and ready to use
  * @returns {boolean} - Whether Perspective is fully available
@@ -490,7 +458,7 @@ async function handleNlQuery(e) {
         // Get query execution time
         const executionTime = parseInt(response.headers.get('x-execution-time') || '0', 10);
 
-        // Update query history
+        // Update query history - now in the dropdown
         addToQueryHistory(question, generatedSql, executionTime, totalCount);
 
         // Update current query in app state
@@ -514,16 +482,6 @@ async function handleNlQuery(e) {
                 const success = await loadArrowData(arrowBuffer);
                 if (success) {
                     console.log('Data loaded into Perspective successfully');
-
-                    // Make sure the viewer is visible
-                    document.getElementById('perspectiveViewer').style.display = 'block';
-
-                    // Remove any fallback display
-                    const resultsContainer = document.querySelector('.card-body[style*="height"]');
-                    const existingFallback = resultsContainer.querySelector('.p-3');
-                    if (existingFallback) {
-                        resultsContainer.removeChild(existingFallback);
-                    }
                 } else {
                     console.warn('Failed to load data into Perspective, using fallback');
                     showFallbackDisplay(totalCount, generatedSql, executionTime);
@@ -572,7 +530,7 @@ function showFallbackDisplay(rowCount, sql, executionTime) {
     }
 
     // Create and show fallback display
-    const resultsContainer = document.querySelector('.card-body[style*="height"]');
+    const resultsContainer = document.querySelector('.perspective-container .card-body');
     if (!resultsContainer) return;
 
     // Remove any existing fallback
@@ -749,7 +707,7 @@ async function selectSubject(subjectName) {
         uploadBtn.disabled = false;
     }
 
-    // Fetch subject details
+    // Fetch subject details - now includes the tables list
     await fetchSubjectDetails(subjectName);
 }
 
@@ -763,7 +721,7 @@ async function viewTable(tableName) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                query: `SELECT * FROM ${appState.currentSubject}.${tableName} LIMIT 10000`
+                query: `SELECT * FROM "${appState.currentSubject}"."${tableName}" LIMIT 10000`
             })
         });
 
@@ -771,26 +729,36 @@ async function viewTable(tableName) {
             throw new Error(`Failed to query table: ${response.statusText}`);
         }
 
-        // Get response data
-        const data = await response.json();
+        // Get metadata from headers
+        const totalCount = parseInt(response.headers.get('x-total-count') || '0', 10);
+        const executionTime = parseInt(response.headers.get('x-execution-time') || '0', 10);
 
-        // Create mock data based on the response
-        let mockData = {};
+        // Get the Arrow data
+        const arrowBuffer = await response.arrayBuffer();
 
-        // Create at least one row of sample data
-        if (data.columns && data.columns.length > 0) {
-            for (const column of data.columns) {
-                mockData[column] = ["Sample data"];
+        // Load the data into perspective
+        if (arrowBuffer.byteLength > 0) {
+            const success = await loadArrowData(arrowBuffer);
+            if (!success) {
+                showToast(`Failed to load table data`, 'error');
             }
         } else {
-            mockData = {
+            // Create mock data for empty tables
+            let emptyTableData = {
                 'Table': [tableName],
-                'Rows': [data.row_count + " rows"]
+                'Status': ['Empty table (0 rows)']
             };
+
+            await perspectiveManager.loadJsonData(emptyTableData);
         }
 
-        // Load the mock data
-        await perspectiveManager.loadJsonData(mockData);
+        // Update query history with a synthetic entry
+        addToQueryHistory(
+            `View table ${tableName}`,
+            `SELECT * FROM "${appState.currentSubject}"."${tableName}" LIMIT 10000`,
+            executionTime,
+            totalCount
+        );
 
         // Enable save by updating reports menu
         fetchAndUpdateReports();
@@ -927,42 +895,35 @@ function updateSubjectsUI() {
     }
 }
 
-// Update subject details
+// Update subject details UI - simplified to show just a list of tables
 function updateSubjectDetailsUI(subjectDetails) {
-    const detailsContainer = document.getElementById('subjectDetailContent');
+    const tablesContainer = document.getElementById('tablesListContainer');
 
     if (!subjectDetails) {
-        detailsContainer.innerHTML = '<p class="text-muted">Select a database to see details</p>';
+        tablesContainer.innerHTML = '<p class="text-muted">Select a database to see tables</p>';
         return;
     }
 
-    let html = `
-        <div class="d-flex justify-content-between mb-2">
-            <span><strong>Files:</strong> ${subjectDetails.file_count}</span>
-            <span><strong>Tables:</strong> ${subjectDetails.tables.length}</span>
-        </div>
-    `;
-
-    if (subjectDetails.tables.length > 0) {
-        html += '<div class="mt-2"><strong>Available Tables:</strong></div>';
-        html += '<ul class="table-list mt-1">';
-
-        subjectDetails.tables.forEach(table => {
-            html += `
-                <li class="table-list-item">
-                    <span>${table}</span>
-                    <button class="btn btn-sm btn-outline-primary btn-view-table" 
-                            data-table="${table}">View</button>
-                </li>
-            `;
-        });
-
-        html += '</ul>';
-    } else {
-        html += '<p class="text-muted mt-2">No tables available. Upload data files to create tables.</p>';
+    if (subjectDetails.tables.length === 0) {
+        tablesContainer.innerHTML = '<p class="text-muted">No tables available. Upload data files to create tables.</p>';
+        return;
     }
 
-    detailsContainer.innerHTML = html;
+    // Create a list of tables with view buttons
+    let html = '<ul class="list-group list-group-flush">';
+
+    subjectDetails.tables.forEach(table => {
+        html += `
+            <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                <span class="table-name">${table}</span>
+                <button class="btn btn-sm btn-outline-primary btn-view-table" 
+                        data-table="${table}">View</button>
+            </li>
+        `;
+    });
+
+    html += '</ul>';
+    tablesContainer.innerHTML = html;
 
     // Add event listeners for view table buttons
     document.querySelectorAll('.btn-view-table').forEach(btn => {
@@ -971,75 +932,6 @@ function updateSubjectDetailsUI(subjectDetails) {
             viewTable(tableName);
         });
     });
-}
-
-// Update schema display
-function updateSchemaUI(schema) {
-    const schemaContainer = document.getElementById('schemaViewerContent');
-
-    if (!schemaContainer) return;
-
-    if (!schema) {
-        schemaContainer.innerHTML = '<p class="text-muted">No schema available</p>';
-        return;
-    }
-
-    // Parse the schema SQL to a more readable format
-    const tables = parseSchemaSQL(schema);
-
-    if (tables.length === 0) {
-        schemaContainer.innerHTML = '<p class="text-muted">No tables in schema</p>';
-        return;
-    }
-
-    let html = '';
-
-    // Add collapsible sections for each table
-    tables.forEach((table, index) => {
-        const tableId = `schema-table-${index}`;
-        const isFirstTable = index === 0;
-
-        html += `
-        <div class="accordion-item schema-table mb-2">
-            <h2 class="accordion-header" id="heading-${tableId}">
-                <button class="accordion-button ${isFirstTable ? '' : 'collapsed'}" type="button" 
-                        data-bs-toggle="collapse" data-bs-target="#collapse-${tableId}" 
-                        aria-expanded="${isFirstTable ? 'true' : 'false'}" aria-controls="collapse-${tableId}">
-                    <span class="schema-table-name">${table.name}</span>
-                    <span class="ms-2 badge bg-secondary">${table.columns.length} columns</span>
-                </button>
-            </h2>
-            <div id="collapse-${tableId}" class="accordion-collapse collapse ${isFirstTable ? 'show' : ''}" 
-                 aria-labelledby="heading-${tableId}">
-                <div class="accordion-body p-0">
-                    <table class="table table-sm mb-0">
-                        <thead>
-                            <tr>
-                                <th>Column</th>
-                                <th>Type</th>
-                                <th>Nullable</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
-
-        table.columns.forEach(column => {
-            html += `
-                <tr>
-                    <td class="schema-column-name">${column.name}</td>
-                    <td class="schema-column-type">${column.type}</td>
-                    <td>${column.nullable ? 'Yes' : 'No'}</td>
-                </tr>`;
-        });
-
-        html += `
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>`;
-    });
-
-    schemaContainer.innerHTML = html;
 }
 
 // Add query to history
@@ -1052,9 +944,9 @@ function addToQueryHistory(question, sql, executionTime, rowCount) {
         timestamp: new Date().toISOString()
     };
 
-    // Add to history (limit to 20 items)
+    // Add to history (limit to 25 items)
     appState.queryHistory.unshift(historyItem);
-    if (appState.queryHistory.length > 20) {
+    if (appState.queryHistory.length > 25) {
         appState.queryHistory.pop(); // Remove oldest
     }
 
@@ -1062,7 +954,7 @@ function addToQueryHistory(question, sql, executionTime, rowCount) {
     updateQueryHistoryUI();
 }
 
-// Update query history UI
+// Update query history UI - now for the dropdown in navbar
 function updateQueryHistoryUI() {
     const historyContainer = document.getElementById('queryHistoryList');
     if (!historyContainer) return;
@@ -1070,70 +962,52 @@ function updateQueryHistoryUI() {
     const history = appState.queryHistory;
 
     if (history.length === 0) {
-        historyContainer.innerHTML = '<div class="text-muted text-center py-3">No query history yet</div>';
+        historyContainer.innerHTML = '<li><span class="dropdown-item-text text-muted">No query history yet</span></li>';
         return;
     }
 
     historyContainer.innerHTML = '';
 
-    // Display most recent queries first
-    history.forEach((item, index) => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'query-history-item list-group-item-action';
+    // Display most recent queries first (up to 25)
+    const displayCount = Math.min(history.length, 25);
+    for (let i = 0; i < displayCount; i++) {
+        const item = history[i];
+        const historyItem = document.createElement('li');
 
         // Format timestamp
         const timestamp = new Date(item.timestamp);
         const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        historyItem.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-                <span class="query-text">${item.question}</span>
-                <div class="text-end">
-                    <span class="query-time">${item.executionTime}ms</span>
-                    <small class="d-block text-muted">${timeString}</small>
-                </div>
+        // Create the history item
+        const itemContent = document.createElement('div');
+        itemContent.className = 'query-history-item';
+        itemContent.innerHTML = `
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-primary">${item.question}</span>
+                <small class="text-muted">${timeString}</small>
+            </div>
+            <div class="text-muted small">
+                <span class="badge bg-secondary">${item.rowCount} rows</span>
+                <span class="ms-2">${item.executionTime}ms</span>
             </div>
         `;
 
         // Add click handler to re-run the query
-        historyItem.addEventListener('click', function() {
+        itemContent.addEventListener('click', function() {
             document.getElementById('nlQueryInput').value = item.question;
             document.getElementById('generatedSqlDisplay').textContent = item.sql || '';
+
+            // Close dropdown
+            const dropdownEl = document.getElementById('historyDropdown');
+            const dropdown = bootstrap.Dropdown.getInstance(dropdownEl);
+            if (dropdown) dropdown.hide();
+
             handleNlQuery(new Event('submit'));
         });
 
+        historyItem.appendChild(itemContent);
         historyContainer.appendChild(historyItem);
-    });
-}
-
-// Parse schema SQL into structured format
-function parseSchemaSQL(schemaSql) {
-    const tables = [];
-    const tableRegex = /CREATE TABLE (\w+) \(([\s\S]*?)\);/g;
-    const columnRegex = /\s*(\w+)\s+([\w()]+)(\s+NOT NULL)?/g;
-
-    let tableMatch;
-    while ((tableMatch = tableRegex.exec(schemaSql)) !== null) {
-        const tableName = tableMatch[1];
-        const columnsText = tableMatch[2];
-
-        const columns = [];
-        let columnMatch;
-        while ((columnMatch = columnRegex.exec(columnsText)) !== null) {
-            columns.push({
-                name: columnMatch[1],
-                type: columnMatch[2],
-                nullable: !columnMatch[3]
-            });
-        }
-
-        tables.push({
-            name: tableName,
-            columns: columns
-        });
     }
-
-    return tables;
 }
 
 // Show toast notification (requires Bootstrap 5)
