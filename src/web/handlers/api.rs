@@ -11,7 +11,6 @@ use std::time::Instant;
 use std::fs;
 use tracing::{debug, error, info};
 use std::ops::Deref;
-use arrow::ipc::writer::StreamWriter;
 
 use crate::web::state::AppState;
 
@@ -243,20 +242,6 @@ fn simplify_query_for_direct_connection(query: &str) -> String {
     simplified.to_string()
 }
 
-fn get_tables_for_schema(conn: &duckdb::Connection, schema: &str) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let query = format!(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
-        schema
-    );
-
-    let mut stmt = conn.prepare(&query)?;
-    let table_names: Vec<String> = stmt.query_map([], |row| row.get(0))?
-        .filter_map(Result::ok)
-        .collect();
-
-    Ok(table_names)
-}
-
 // Helper function to extract schema from query
 fn extract_schema_from_query(query: &str) -> Option<String> {
     // Simple regex pattern to find schema.table pattern
@@ -268,24 +253,6 @@ fn extract_schema_from_query(query: &str) -> Option<String> {
         }
     }
     None
-}
-
-// Helper function to find the first available schema
-fn find_first_schema(conn: &duckdb::Connection) -> Result<String, Box<dyn std::error::Error>> {
-    let mut stmt = conn.prepare("
-        SELECT schema_name FROM information_schema.schemata
-        WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'main')
-        LIMIT 1
-    ")?;
-
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    let schemas: Vec<String> = rows.filter_map(Result::ok).collect();
-
-    if schemas.is_empty() {
-        return Err("No schemas found".into());
-    }
-
-    Ok(schemas[0].clone())
 }
 
 // Natural language query - updated to use table metadata from database directly
@@ -505,56 +472,6 @@ async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (S
     // This is a fallback and should only happen if the UI hasn't set a subject yet
     info!("No subject currently selected, using '{}' as default", subjects[0]);
     Ok(subjects[0].clone())
-}
-
-fn apply_simple_qualification(sql: &str, tables: &[String], schema: &str) -> String {
-    // Start with the original SQL
-    let mut result = sql.to_string();
-
-    // For each known table name, apply qualification
-    for table in tables {
-        // Handle various SQL patterns with table references
-        // Be careful with spaces to avoid partial matches
-
-        // FROM clause
-        let from_pattern = format!(" FROM {} ", table);
-        let from_replacement = format!(" FROM \"{}\".\"{}\" ", schema, table);
-        result = result.replace(&from_pattern, &from_replacement);
-
-        // FROM clause at end of statement
-        let from_end_pattern = format!(" FROM {};", table);
-        let from_end_replacement = format!(" FROM \"{}\".\"{}\" ;", schema, table);
-        result = result.replace(&from_end_pattern, &from_end_replacement);
-
-        // JOIN clause
-        let join_pattern = format!(" JOIN {} ", table);
-        let join_replacement = format!(" JOIN \"{}\".\"{}\" ", schema, table);
-        result = result.replace(&join_pattern, &join_replacement);
-
-        // UPDATE clause
-        let update_pattern = format!("UPDATE {} ", table);
-        let update_replacement = format!("UPDATE \"{}\".\"{}\" ", schema, table);
-        result = result.replace(&update_pattern, &update_replacement);
-
-        // INSERT INTO clause
-        let insert_pattern = format!("INSERT INTO {} ", table);
-        let insert_replacement = format!("INSERT INTO \"{}\".\"{}\" ", schema, table);
-        result = result.replace(&insert_pattern, &insert_replacement);
-
-        // DELETE FROM clause
-        let delete_pattern = format!("DELETE FROM {} ", table);
-        let delete_replacement = format!("DELETE FROM \"{}\".\"{}\" ", schema, table);
-        result = result.replace(&delete_pattern, &delete_replacement);
-
-        // Table column references (e.g., "orders.column")
-        // The issue was here - we can't modify parts[i] directly
-        // Instead, create a new string and use replace_range
-
-        // Fix for table.column references - using a simpler approach with string replacement
-        let column_replacement = format!("\"{}\".\"{}\".", schema, table);
-    }
-
-    result
 }
 
 // Subjects
@@ -827,6 +744,7 @@ pub async fn get_schema(
 }
 
 // Export
+#[allow(unused)]
 pub async fn export_data(
     state: State<Arc<AppState>>,
     path: Path<String>,
@@ -846,6 +764,7 @@ pub async fn export_data(
 }
 
 // Reports
+#[allow(unused)]
 pub async fn list_reports(
     state: State<Arc<AppState>>,
 ) -> Result<Json<Vec<Report>>, (StatusCode, String)> {
@@ -854,6 +773,7 @@ pub async fn list_reports(
     Ok(Json(reports))
 }
 
+#[allow(unused)]
 pub async fn get_report(
     state: State<Arc<AppState>>,
     path: Path<String>,
@@ -862,6 +782,7 @@ pub async fn get_report(
     Err((StatusCode::NOT_FOUND, "Report not found".to_string()))
 }
 
+#[allow(unused)]
 pub async fn save_report(
     state: State<Arc<AppState>>,
     Json(payload): Json<SaveReportRequest>,
@@ -882,10 +803,7 @@ pub async fn save_report(
     }))
 }
 
-pub async fn delete_report(
-    state: State<Arc<AppState>>,
-    path: Path<String>,
-) -> Result<StatusCode, (StatusCode, String)> {
+pub async fn delete_report() -> Result<StatusCode, (StatusCode, String)> {
     // Placeholder - in a real app, delete from database
     Err((StatusCode::NOT_FOUND, "Report not found".to_string()))
 }

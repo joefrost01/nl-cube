@@ -62,9 +62,6 @@ async function initApp() {
             fetchAndUpdateReports()
         ]);
 
-        // Apply saved theme
-        applyTheme(appState.currentTheme);
-
         console.log('NL-Cube initialized successfully');
     } catch (error) {
         console.error('Initialization failed:', error);
@@ -315,44 +312,8 @@ function initUI() {
     updateQueryHistoryUI();
 }
 
-// Toggle between light and dark themes
-function toggleTheme() {
-    const newTheme = appState.currentTheme === 'dark' ? 'light' : 'dark';
-    applyTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    appState.currentTheme = newTheme;
-}
-
-// Apply theme to all components
-function applyTheme(theme) {
-    // Apply to HTML
-    document.documentElement.setAttribute('data-bs-theme', theme);
-
-    // Apply to Perspective viewer using the manager
-    // if (perspectiveManager) {
-    //     perspectiveManager.setTheme(theme);
-    // }
-    //
-    // // Update theme toggle button
-    // const themeBtn = document.getElementById('themeToggleBtn');
-    // const themeIcon = themeBtn.querySelector('i');
-    //
-    // if (theme === 'dark') {
-    //     themeIcon.className = 'bi bi-sun-fill';
-    // } else {
-    //     themeIcon.className = 'bi bi-moon-fill';
-    // }
-    //
-    // // Add transition class to all elements
-    // document.body.classList.add('theme-transition');
-    //
-    // // Remove transition class after transition completes
-    // setTimeout(() => {
-    //     document.body.classList.remove('theme-transition');
-    // }, 300);
-}
-
 // API Calls
+
 // Fetch subjects list
 async function fetchSubjects() {
     try {
@@ -392,34 +353,6 @@ async function fetchSubjectDetails(subjectName) {
         showToast(`Failed to load details for ${subjectName}`, 'error');
         return null;
     }
-}
-
-/**
- * Check if Perspective is truly available and ready to use
- * @returns {boolean} - Whether Perspective is fully available
- */
-function isPerspectiveAvailable() {
-    // Check if the global perspective object exists
-    if (typeof window.perspective === 'undefined' || !window.perspective) {
-        console.warn('Perspective global object not found');
-        return false;
-    }
-
-    // Check if the worker function exists
-    if (typeof window.perspective.worker !== 'function') {
-        console.warn('Perspective worker function not found');
-        return false;
-    }
-
-    // Check if the viewer element exists
-    const viewer = document.getElementById('perspectiveViewer');
-    if (!viewer) {
-        console.warn('Perspective viewer element not found');
-        return false;
-    }
-
-    console.log('Perspective is available');
-    return true;
 }
 
 async function handleNlQuery(e) {

@@ -21,16 +21,6 @@ struct OllamaRequest {
 #[derive(Deserialize, Debug)]
 struct OllamaResponse {
     response: String,
-    // Add other fields that might be in the response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    created_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    done: Option<bool>,
-    // Use serde to ignore unknown fields
-    #[serde(flatten)]
-    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl OllamaProvider {

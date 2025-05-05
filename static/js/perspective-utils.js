@@ -287,31 +287,6 @@ class PerspectiveManager {
     }
 
     /**
-     * Export the current view to CSV
-     * @returns {Promise<string>} - The CSV data
-     */
-    async exportToCsv() {
-        if (!this.table || !this.isInitialized) {
-            throw new Error('No data to export');
-        }
-
-        try {
-            // First get the view from the viewer
-            const view = await this.viewerElement.getView();
-            if (!view) {
-                throw new Error('No view available for export');
-            }
-
-            // Export the view to CSV
-            return await view.to_csv();
-        } catch (error) {
-            console.error('Error exporting to CSV:', error);
-            this.onError(error);
-            throw error;
-        }
-    }
-
-    /**
      * Reset the viewer to an empty state
      * @returns {Promise<boolean>} - Whether the reset was successful
      */

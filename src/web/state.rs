@@ -15,16 +15,11 @@ use tracing::{error, info};
 pub struct AppState {
     pub config: AppConfig,
     pub db_pool: Pool<DuckDBConnectionManager>,
-    pub template_env: Environment<'static>,
     pub llm_manager: Arc<Mutex<LlmManager>>,
     pub data_dir: PathBuf,
-    pub multi_db_manager: Arc<MultiDbConnectionManager>,
-    // Cache for subjects only, not schemas
     pub subjects: RwLock<Vec<String>>,
     pub startup_time: chrono::DateTime<chrono::Utc>,
-    // Add current_subject to track which subject is selected
     pub current_subject: RwLock<Option<String>>,
-    // Schema manager
     pub schema_manager: SchemaManager,
 }
 
@@ -48,7 +43,6 @@ impl AppState {
 
         // Create schema manager with multi-db support
         let schema_manager = SchemaManager::with_multi_db(
-            db_pool.clone(),
             Arc::clone(&multi_db_manager),
             data_dir.clone()
         );
@@ -56,10 +50,8 @@ impl AppState {
         Self {
             config: config.clone(),
             db_pool,
-            template_env: env,
             llm_manager: Arc::new(Mutex::new(llm_manager)),
             data_dir,
-            multi_db_manager,
             subjects: RwLock::new(Vec::new()),
             startup_time: chrono::Utc::now(),
             current_subject: RwLock::new(None), // Initialize as None
@@ -127,7 +119,6 @@ impl AppState {
             let conn = duckdb::Connection::open(&db_connection_string)?;
 
             // Get a list of all schemas
-            let schemas = Vec::<String>::new();
             let mut stmt = conn.prepare("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'main')")?;
             let schema_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
             let schema_list: Vec<String> = schema_iter.filter_map(Result::ok).collect();

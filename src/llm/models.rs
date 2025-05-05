@@ -23,17 +23,6 @@ pub struct NlQuery {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-impl NlQuery {
-    pub fn new(question: String) -> Self {
-        Self {
-            question,
-            generated_sql: None,
-            error: None,
-            created_at: chrono::Utc::now(),
-        }
-    }
-}
-
 // Structure to represent a saved query with results
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SavedQuery {

@@ -1,7 +1,5 @@
 use crate::db::multi_db_pool::MultiDbConnectionManager;
-use crate::db::db_pool::DuckDBConnectionManager;
 use duckdb::{Connection};
-use r2d2::{Pool};
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::path::{PathBuf};
@@ -10,8 +8,6 @@ use tracing::{debug, error, info};
 
 /// A struct to cache and manage database schema information
 pub struct SchemaManager {
-    /// The database connection pool
-    db_pool: Pool<DuckDBConnectionManager>,
     /// Cache of schemas and their tables
     schema_cache: RwLock<HashMap<String, Vec<String>>>,
     /// Last refresh timestamp
@@ -23,13 +19,11 @@ pub struct SchemaManager {
 impl SchemaManager {
     /// Create a new SchemaManager with the multi-database connection manager
     pub fn with_multi_db(
-        db_pool: Pool<DuckDBConnectionManager>,
         conn_manager: Arc<MultiDbConnectionManager>,
         data_dir: PathBuf
     ) -> Self {
         // Create the schema manager
         let manager = Self {
-            db_pool,
             schema_cache: RwLock::new(HashMap::new()),
             last_refresh: RwLock::new(chrono::Utc::now()),
             data_dir: data_dir.clone(), // Clone the data_dir to avoid borrowing issues
@@ -165,135 +159,6 @@ impl SchemaManager {
 
         info!("Schema cache refreshed successfully");
         Ok(())
-    }
-
-    /// Execute a query with proper schema handling
-    pub async fn execute_query(&self, sql: &str, subject: &str) -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
-        // Build the path to the subject database
-        let subject_dir = self.data_dir.join(subject);
-        let db_path = subject_dir.join(format!("{}.duckdb", subject));
-
-        debug!("Using database at path: {}", db_path.display());
-
-        // We need to clone the SQL and database path to move into the blocking task
-        let sql_to_execute = sql.to_string();
-        let db_path_string = db_path.to_string_lossy().to_string();
-
-        // Execute the query in a blocking task with a fresh connection
-        let result = tokio::task::spawn_blocking(move || -> Result<Vec<HashMap<String, String>>, Box<dyn std::error::Error + Send + Sync>> {
-            // Create a new connection for this query
-            let conn = match Connection::open(&db_path_string) {
-                Ok(conn) => conn,
-                Err(e) => {
-                    error!("Failed to open database at {}: {}", db_path_string, e);
-                    return Err(Box::new(e));
-                }
-            };
-
-            // Handle special case for COUNT queries first - try direct approach
-            if sql_to_execute.to_uppercase().contains("COUNT") {
-                // Try to get a direct count result
-                let count_result: Result<i64, _> = conn.query_row(&sql_to_execute, [], |row| row.get(0));
-
-                if let Ok(count) = count_result {
-                    let mut results = Vec::new();
-                    let mut row_map = HashMap::new();
-                    let column_name = "count";
-                    row_map.insert(column_name.to_string(), count.to_string());
-                    results.push(row_map);
-                    return Ok(results);
-                }
-            }
-
-            // For non-COUNT queries or if the direct approach failed
-            // Prepare the statement
-            let mut stmt = match conn.prepare(&sql_to_execute) {
-                Ok(stmt) => stmt,
-                Err(e) => {
-                    error!("Failed to prepare statement: {}", e);
-                    return Err(Box::new(e));
-                }
-            };
-
-            // Get column information BEFORE executing query
-            let column_count = stmt.column_count();
-            let mut column_names = Vec::new();
-
-            for i in 0..column_count {
-                match stmt.column_name(i) {
-                    Ok(name) => column_names.push(name.to_string()),
-                    Err(e) => {
-                        error!("Failed to get column name for index {}: {}", i, e);
-                        column_names.push(format!("column_{}", i));
-                    }
-                }
-            }
-
-            // Now execute the query
-            let mut rows = match stmt.query([]) {
-                Ok(rows) => rows,
-                Err(e) => {
-                    error!("Failed to execute query: {}", e);
-                    return Err(Box::new(e));
-                }
-            };
-
-            let mut results = Vec::new();
-
-            // Process each row
-            while let Some(row) = match rows.next() {
-                Ok(row_opt) => row_opt,
-                Err(e) => {
-                    error!("Error fetching next row: {}", e);
-                    return Err(Box::new(e));
-                }
-            } {
-                let mut row_map = HashMap::new();
-
-                for (i, name) in column_names.iter().enumerate() {
-                    // Handle different data types using pattern matching
-                    let value = match row.get_ref(i) {
-                        Ok(val_ref) => match val_ref {
-                            duckdb::types::ValueRef::Null => "NULL".to_string(),
-                            duckdb::types::ValueRef::Boolean(v) => v.to_string(),
-                            duckdb::types::ValueRef::TinyInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::SmallInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::Int(v) => v.to_string(),
-                            duckdb::types::ValueRef::BigInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::HugeInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::UTinyInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::USmallInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::UInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::UBigInt(v) => v.to_string(),
-                            duckdb::types::ValueRef::Float(v) => v.to_string(),
-                            duckdb::types::ValueRef::Double(v) => v.to_string(),
-                            duckdb::types::ValueRef::Date32(v) => v.to_string(),
-                            duckdb::types::ValueRef::Time64(_, v) => v.to_string(),
-                            duckdb::types::ValueRef::Timestamp(_, v) => v.to_string(),
-                            duckdb::types::ValueRef::Interval { months, days, nanos } =>
-                                format!("{}m {}d {}n", months, days, nanos),
-                            duckdb::types::ValueRef::Blob(v) => format!("[BLOB: {} bytes]", v.len()),
-                            duckdb::types::ValueRef::Text(v) => String::from_utf8_lossy(v).to_string(),
-                            duckdb::types::ValueRef::Decimal(v) => v.to_string(),
-                            // Catch-all for any other types or future variants
-                            _ => "[UNKNOWN TYPE]".to_string(),
-                        },
-                        Err(e) => {
-                            error!("Error getting value for column {}: {}", name, e);
-                            "[ERROR]".to_string()
-                        }
-                    };
-
-                    row_map.insert(name.clone(), value);
-                }
-
-                results.push(row_map);
-            }
-
-            Ok(results)
-        }).await??;
-
-        Ok(result)
     }
 
 }

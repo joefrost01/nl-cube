@@ -1,7 +1,3 @@
-// this is where our ingest from file code will go
-// we'll need to infer the schema across many rows for CSVs
-
-// probably need a separate admin connection for loading data on
 pub mod csv;
 pub mod parquet;
 pub mod schema;
@@ -13,7 +9,6 @@ use std::fmt;
 #[derive(Debug)]
 pub enum IngestError {
     IoError(std::io::Error),
-    ParsingError(String),
     DatabaseError(String),
     UnsupportedFileType(String),
 }
@@ -22,7 +17,6 @@ impl fmt::Display for IngestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IngestError::IoError(err) => write!(f, "IO error: {}", err),
-            IngestError::ParsingError(msg) => write!(f, "Parsing error: {}", msg),
             IngestError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             IngestError::UnsupportedFileType(ext) => write!(f, "Unsupported file type: {}", ext),
         }
@@ -45,23 +39,20 @@ pub trait FileIngestor: Send + Sync {
 pub struct IngestManager {
     csv_ingestor: csv::CsvIngestor,
     parquet_ingestor: parquet::ParquetIngestor,
-    connection_string: String,
 }
 
 impl IngestManager {
     pub fn new() -> Self {
         Self {
-            csv_ingestor: csv::CsvIngestor::new("nl-cube.db".to_string()),
+            csv_ingestor: csv::CsvIngestor::new(),
             parquet_ingestor: parquet::ParquetIngestor::new(),
-            connection_string: "nl-cube.db".to_string(),
         }
     }
 
-    pub fn with_connection_string(connection_string: String) -> Self {
+    pub fn with_connection_string() -> Self {
         Self {
-            csv_ingestor: csv::CsvIngestor::new(connection_string.clone()),
+            csv_ingestor: csv::CsvIngestor::new(),
             parquet_ingestor: parquet::ParquetIngestor::new(),
-            connection_string,
         }
     }
 

@@ -13,7 +13,6 @@ pub struct DatabaseConfig {
 pub struct WebConfig {
     pub host: String,
     pub port: u16,
-    pub static_dir: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -105,7 +104,6 @@ impl Default for AppConfig {
             web: WebConfig {
                 host: "127.0.0.1".to_string(),
                 port: 3000,
-                static_dir: "static".to_string(),
             },
             llm: LlmConfig {
                 backend: "local".to_string(),

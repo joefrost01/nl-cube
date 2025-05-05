@@ -7,14 +7,12 @@ use crate::ingest::schema::{TableSchema, ColumnSchema, DataType};
 
 pub struct CsvIngestor {
     sample_size: usize,
-    connection_string: String,
 }
 
 impl CsvIngestor {
-    pub fn new(connection_string: String) -> Self {
+    pub fn new() -> Self {
         Self {
             sample_size: 1000, // Default sample size for schema inference
-            connection_string,
         }
     }
 

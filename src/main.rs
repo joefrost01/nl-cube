@@ -4,13 +4,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info};
 use crate::db::multi_db_pool::MultiDbConnectionManager;
-use crate::db::schema_manager::SchemaManager;
 
 mod config;
 mod db;
 mod ingest;
 mod llm;
-mod server;
 mod util;
 mod web;
 
@@ -56,13 +54,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.database.connection_string.clone(),
         data_dir.clone()
     ));
-
-    // Initialize the schema manager with support for multi-db
-    let schema_manager = SchemaManager::with_multi_db(
-        pool.clone(),
-        Arc::clone(&multi_db_manager),
-        data_dir.clone()
-    );
 
     // Initialize LLM manager
     info!("Initializing LLM manager with backend: {}", config.llm.backend);

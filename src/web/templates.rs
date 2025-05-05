@@ -2,6 +2,7 @@ use minijinja::Environment;
 use std::collections::HashMap;
 use tracing::error;
 
+#[allow(unused)]
 pub fn init_templates() -> Environment<'static> {
     let mut env = Environment::new();
 
@@ -17,6 +18,7 @@ pub fn init_templates() -> Environment<'static> {
     env
 }
 
+#[allow(unused)]
 pub fn render_template(
     env: &Environment,
     template_name: &str,

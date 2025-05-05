@@ -207,7 +207,7 @@ async fn process_uploaded_files(
 
     // Process all files
     let mut uploaded_files: Vec<String> = Vec::new();
-    let ingest_manager = crate::ingest::IngestManager::with_connection_string(state.config.database.connection_string.clone());
+    let ingest_manager = crate::ingest::IngestManager::with_connection_string();
 
     for file_path in file_paths {
         // Generate a table name based on file name only (not including subject prefix)
