@@ -714,6 +714,9 @@ async function selectSubject(subjectName) {
 // Handle table view
 async function viewTable(tableName) {
     try {
+        // Simplify the query to avoid schema qualification issues
+        const simpleQuery = `SELECT * FROM "${tableName}" LIMIT 10000`;
+
         // Get a connection and query the table directly
         const response = await fetch(`${API_BASE_URL}/query`, {
             method: 'POST',
@@ -721,7 +724,7 @@ async function viewTable(tableName) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                query: `SELECT * FROM "${appState.currentSubject}"."${tableName}" LIMIT 10000`
+                query: simpleQuery
             })
         });
 
@@ -755,7 +758,7 @@ async function viewTable(tableName) {
         // Update query history with a synthetic entry
         addToQueryHistory(
             `View table ${tableName}`,
-            `SELECT * FROM "${appState.currentSubject}"."${tableName}" LIMIT 10000`,
+            simpleQuery,
             executionTime,
             totalCount
         );

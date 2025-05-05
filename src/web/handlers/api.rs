@@ -87,47 +87,56 @@ pub async fn execute_query(
     let start_time = Instant::now();
     info!("Executing SQL query: {}", payload.query);
 
-    let conn = state.db_pool.get().map_err(|e| {
-        error!("Failed to get DB connection: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Database connection error".to_string(),
-        )
-    })?;
-
-    // Find the schema used in the query or set a default
-    let schema_name = extract_schema_from_query(&payload.query).unwrap_or_else(|| {
-        // If no schema specified, try to find available schemas
-        match find_first_schema(&conn) {
-            Ok(schema) => {
-                info!("No schema specified in query, using schema: {}", schema);
-                schema
-            },
-            Err(_) => {
-                info!("No schema found, using default");
-                "main".to_string()
+    // Find the subject used in the query or set a default
+    let subject_name = extract_schema_from_query(&payload.query)
+        .or_else(|| {
+            if let Some(first_subject) = state.subjects.try_read().ok().and_then(|s| s.first().cloned()) {
+                Some(first_subject)
+            } else {
+                None
             }
+        })
+        .unwrap_or_else(|| "main".to_string());
+
+    // Build the path to the subject database
+    let subject_dir = state.data_dir.join(&subject_name);
+    let db_path = subject_dir.join(format!("{}.duckdb", subject_name));
+
+    info!("Using subject database at: {}", db_path.display());
+
+    // Make a direct connection to the subject database
+    let conn = match duckdb::Connection::open(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to open database at {}: {}", db_path.display(), e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database connection error: {}", e)
+            ));
         }
-    });
+    };
 
-    // Get table names for this schema
-    let table_names = get_tables_for_schema(&conn, &schema_name).unwrap_or_default();
+    // Simplify the query - remove schema qualifiers as they aren't needed when connecting directly
+    let simplified_sql = simplify_query_for_direct_connection(&payload.query);
+    info!("Qualified SQL: {}", simplified_sql);
 
-    // Apply simple schema qualification
-    let qualified_sql = apply_simple_qualification(&payload.query, &table_names, &schema_name);
-    info!("Qualified SQL: {}", qualified_sql);
-
-    // Execute the query with qualified table names
-    let mut stmt = conn.prepare(&qualified_sql).map_err(|e| {
-        error!("Failed to prepare query: {}", e);
-        (StatusCode::BAD_REQUEST, format!("SQL error: {}", e))
-    })?;
+    // Execute the query with the direct connection
+    let mut stmt = match conn.prepare(&simplified_sql) {
+        Ok(stmt) => stmt,
+        Err(e) => {
+            error!("Failed to prepare query: {}", e);
+            return Err((StatusCode::BAD_REQUEST, format!("SQL error: {}", e)));
+        }
+    };
 
     // Get result as an Arrow batch
-    let arrow_batch = stmt.query_arrow([]).map_err(|e| {
-        error!("Failed to execute query: {}", e);
-        (StatusCode::BAD_REQUEST, format!("SQL error: {}", e))
-    })?;
+    let arrow_batch = match stmt.query_arrow([]) {
+        Ok(batch) => batch,
+        Err(e) => {
+            error!("Failed to execute query: {}", e);
+            return Err((StatusCode::BAD_REQUEST, format!("SQL error: {}", e)));
+        }
+    };
 
     let schema = arrow_batch.get_schema();
 
@@ -148,24 +157,27 @@ pub async fn execute_query(
     let mut buffer = Vec::new();
 
     // Create a file writer with the schema
-    let mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref()).map_err(|e| {
-        error!("Failed to create Arrow file writer: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
-    })?;
+    let mut file_writer = match arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref()) {
+        Ok(writer) => writer,
+        Err(e) => {
+            error!("Failed to create Arrow file writer: {}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e)));
+        }
+    };
 
     // Write all record batches to the buffer
     for batch in &record_batches {
-        file_writer.write(batch).map_err(|e| {
+        if let Err(e) = file_writer.write(batch) {
             error!("Failed to write Arrow batch: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
-        })?;
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e)));
+        }
     }
 
     // Finalize the stream
-    file_writer.finish().map_err(|e| {
+    if let Err(e) = file_writer.finish() {
         error!("Failed to finalize Arrow file: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
-    })?;
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e)));
+    }
 
     info!("Query executed successfully. Row count: {}, Execution time: {}ms",
           row_count, start_time.elapsed().as_millis());
@@ -189,12 +201,20 @@ pub async fn execute_query(
     }
 
     // Add the SQL query as a header for debugging/tracing
-    if let Ok(sql_header) = HeaderValue::from_str(&qualified_sql) {
+    if let Ok(sql_header) = HeaderValue::from_str(&simplified_sql) {
         headers.insert("X-Generated-SQL", sql_header);
     }
 
     // Return the Arrow buffer with appropriate headers
     Ok((headers, buffer))
+}
+
+fn simplify_query_for_direct_connection(query: &str) -> String {
+    // If the query has qualified references like "db1"."orders", simplify to just "orders"
+    let re = regex::Regex::new(r#"["']([a-zA-Z0-9_]+)["']\s*\.\s*["']([a-zA-Z0-9_]+)["']"#).unwrap();
+    let simplified = re.replace_all(query, "\"$2\"");
+
+    simplified.to_string()
 }
 
 fn get_tables_for_schema(conn: &duckdb::Connection, schema: &str) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
@@ -543,38 +563,131 @@ pub async fn get_subject(
 
     let file_count = entries.count();
 
-    // Get tables from this subject's schema using information_schema
-    let conn = state.db_pool.get().map_err(|e| {
-        error!("Failed to get DB connection: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database connection error".to_string())
-    })?;
+    // Build the path to the subject database
+    let db_path = subject_path.join(format!("{}.duckdb", subject));
 
-    let mut stmt = conn.prepare("
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = ?
-    ").map_err(|e| {
-        error!("Failed to prepare query: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
-    })?;
+    // Connect directly to the subject database instead of using the pool
+    let conn = match duckdb::Connection::open(&db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to open subject database at {}: {}", db_path.display(), e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database connection error".to_string()
+            ));
+        }
+    };
 
-    let tables_result = stmt.query_map(&[&subject], |row| {
-        row.get::<_, String>(0)
-    }).map_err(|e| {
-        error!("Failed to execute query: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
-    })?;
-
-    let tables: Result<Vec<String>, _> = tables_result.collect();
-    let tables = tables.map_err(|e| {
-        error!("Failed to collect tables: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
-    })?;
+    // Try different approaches to get table names
+    let tables = match get_tables_from_database(&conn) {
+        Ok(tables) => tables,
+        Err(e) => {
+            error!("Failed to get tables for subject {}: {}", subject, e);
+            vec![] // Return empty list rather than failing
+        }
+    };
 
     Ok(Json(Subject {
         name: subject,
         tables,
         file_count,
     }))
+}
+
+// Helper function to get tables from a database connection using multiple approaches
+fn get_tables_from_database(conn: &duckdb::Connection) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut tables = Vec::new();
+
+    // First try with sqlite_master (most reliable for DuckDB)
+    let query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'duck_%' AND name NOT LIKE 'pg_%'";
+
+    match conn.prepare(query) {
+        Ok(mut stmt) => {
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            for row in rows {
+                if let Ok(table_name) = row {
+                    tables.push(table_name);
+                }
+            }
+        },
+        Err(e) => {
+            error!("Error preparing sqlite_master query: {}", e);
+
+            // Second attempt: try SHOW TABLES if first attempt fails
+            match conn.prepare("SHOW TABLES") {
+                Ok(mut show_stmt) => {
+                    let rows = show_stmt.query_map([], |row| row.get::<_, String>(0))?;
+                    for row in rows {
+                        if let Ok(table_name) = row {
+                            tables.push(table_name);
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!("Error preparing SHOW TABLES query: {}", e);
+
+                    // Third attempt: try with information_schema
+                    match conn.prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'") {
+                        Ok(mut info_stmt) => {
+                            let rows = info_stmt.query_map([], |row| row.get::<_, String>(0))?;
+                            for row in rows {
+                                if let Ok(table_name) = row {
+                                    tables.push(table_name);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            error!("Error preparing information_schema query: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If we still don't have tables, try a fourth approach with PRAGMA
+    if tables.is_empty() {
+        match conn.prepare("PRAGMA table_list") {
+            Ok(mut pragma_stmt) => {
+                let rows = pragma_stmt.query_map([], |row| row.get::<_, String>(1))?; // 1 is the name column
+                for row in rows {
+                    if let Ok(table_name) = row {
+                        // Skip internal tables
+                        if !table_name.starts_with("sqlite_") &&
+                            !table_name.starts_with("duck_") &&
+                            !table_name.starts_with("pg_") {
+                            tables.push(table_name);
+                        }
+                    }
+                }
+            },
+            Err(e) => {
+                error!("Error preparing PRAGMA table_list query: {}", e);
+            }
+        }
+    }
+
+    // Last resort - try direct SQL on common table names
+    if tables.is_empty() {
+        for table_name in &["orders", "customers", "products", "sales"] {
+            let check_sql = format!("SELECT 1 FROM \"{}\" LIMIT 1", table_name);
+            match conn.prepare(&check_sql) {
+                Ok(mut stmt) => {
+                    match stmt.query([]){
+                        Ok(_) => {
+                            // If query successful, table exists
+                            tables.push(table_name.to_string());
+                        },
+                        Err(_) => {} // Skip if error
+                    }
+                },
+                Err(_) => {} // Skip if error
+            }
+        }
+    }
+
+    debug!("Found {} tables in database", tables.len());
+    Ok(tables)
 }
 
 pub async fn create_subject(
