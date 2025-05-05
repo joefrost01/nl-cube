@@ -37,3 +37,10 @@ mime_guess = "2.0.5"
 arrow = "53.4.0"
 regex = "1.9.5"
 oneshot = "0.1.11"
+
+[profile.release]
+incremental = false
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

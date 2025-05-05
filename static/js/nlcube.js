@@ -237,6 +237,15 @@ async function initPerspective() {
     try {
         console.log('Initializing Perspective...');
 
+        // Dynamically import Perspective modules
+        const perspectiveModule = await import('https://cdn.jsdelivr.net/npm/@finos/perspective@2.5.0/dist/cdn/perspective.js');
+        await import('https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@2.5.0/dist/cdn/perspective-viewer.js');
+        await import('https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-datagrid@2.5.0/dist/cdn/perspective-viewer-datagrid.js');
+        await import('https://cdn.jsdelivr.net/npm/@finos/perspective-viewer-d3fc@2.5.0/dist/cdn/perspective-viewer-d3fc.js');
+
+        // Store the module for later use
+        window.perspectiveModule = perspectiveModule.default;
+
         // Initialize Perspective Manager
         perspectiveManager = new PerspectiveManager({
             viewerElement: document.getElementById('perspectiveViewer'),
@@ -251,7 +260,7 @@ async function initPerspective() {
         });
 
         // Initialize the manager with the perspective module
-        await perspectiveManager.initialize(perspective);
+        await perspectiveManager.initialize(perspectiveModule.default);
 
         console.log('Perspective initialized');
         return true;
@@ -468,11 +477,31 @@ async function fetchReports() {
 
 
 /**
- * Check if Perspective is available
- * @returns {boolean} - Whether Perspective is available
+ * Check if Perspective is truly available and ready to use
+ * @returns {boolean} - Whether Perspective is fully available
  */
 function isPerspectiveAvailable() {
-    return typeof window.perspective !== 'undefined' && window.perspective;
+    // Check if the global perspective object exists
+    if (typeof window.perspective === 'undefined' || !window.perspective) {
+        console.warn('Perspective global object not found');
+        return false;
+    }
+
+    // Check if the worker function exists
+    if (typeof window.perspective.worker !== 'function') {
+        console.warn('Perspective worker function not found');
+        return false;
+    }
+
+    // Check if the viewer element exists
+    const viewer = document.getElementById('perspectiveViewer');
+    if (!viewer) {
+        console.warn('Perspective viewer element not found');
+        return false;
+    }
+
+    console.log('Perspective is available');
+    return true;
 }
 
 /**
@@ -575,10 +604,6 @@ async function executeNlQuery(question) {
     }
 }
 
-/**
- * Handle form submission for natural language query
- * @param {Event} e - The form submission event
- */
 async function handleNlQuery(e) {
     e.preventDefault();
 
@@ -586,12 +611,198 @@ async function handleNlQuery(e) {
     if (!question) return;
 
     try {
-        await executeNlQuery(question);
+        // Update UI to show loading state
+        const runButton = document.getElementById('runQueryBtn');
+        runButton.disabled = true;
+        runButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
+        document.getElementById('resultsTitle').textContent = 'Running Query...';
+
+        // Execute the query
+        const response = await fetch(`${API_BASE_URL}/nl-query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ question })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Query failed with status: ${response.status}`);
+        }
+
+        // Get metadata from headers
+        const generatedSql = response.headers.get('x-generated-sql') || '';
+        const totalCount = parseInt(response.headers.get('x-total-count') || '0', 10);
+
+        // Update SQL display
+        document.getElementById('generatedSqlDisplay').textContent = generatedSql;
+
+        // Get query execution time
+        const executionTime = parseInt(response.headers.get('x-execution-time') || '0', 10);
+
+        // Update query history
+        addToQueryHistory(question, generatedSql, executionTime, totalCount);
+
+        // Update current query in app state
+        appState.currentQuery = {
+            question,
+            sql: generatedSql,
+            executionTime,
+            rowCount: totalCount
+        };
+
+        // Get the Arrow data
+        const arrowBuffer = await response.arrayBuffer();
+        console.log('Received Arrow data:', arrowBuffer.byteLength, 'bytes');
+
+        // Check content type to confirm it's Arrow data
+        const contentType = response.headers.get('content-type');
+        console.log('Content type:', contentType);
+
+        if (contentType === 'application/vnd.apache.arrow.file' && arrowBuffer.byteLength > 0) {
+            try {
+                const success = await loadArrowData(arrowBuffer);
+                if (success) {
+                    console.log('Data loaded into Perspective successfully');
+
+                    // Make sure the viewer is visible
+                    document.getElementById('perspectiveViewer').style.display = 'block';
+
+                    // Remove any fallback display
+                    const resultsContainer = document.querySelector('.card-body[style*="height"]');
+                    const existingFallback = resultsContainer.querySelector('.p-3');
+                    if (existingFallback) {
+                        resultsContainer.removeChild(existingFallback);
+                    }
+                } else {
+                    console.warn('Failed to load data into Perspective, using fallback');
+                    showFallbackDisplay(totalCount, generatedSql, executionTime);
+                }
+            } catch (error) {
+                console.error('Error processing Arrow data:', error);
+                showFallbackDisplay(totalCount, generatedSql, executionTime);
+            }
+        } else {
+            console.warn('Response is not Arrow data or is empty');
+            showFallbackDisplay(totalCount, generatedSql, executionTime);
+        }
+
+        // Update results title
+        document.getElementById('resultsTitle').textContent = `Results: ${totalCount} rows`;
+
+        // Reset button and enable save button
+        runButton.disabled = false;
+        runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
+        document.getElementById('saveReportBtn').disabled = false;
+
     } catch (error) {
-        console.error('Error in handleNlQuery:', error);
+        // Handle errors
+        console.error('Error executing query:', error);
+
+        // Reset button state
+        const runButton = document.getElementById('runQueryBtn');
+        runButton.disabled = false;
+        runButton.innerHTML = '<i class="bi bi-play-fill"></i> Run Query';
+
+        // Show error
+        document.getElementById('resultsTitle').textContent = 'Query Failed';
+        showToast(`Query failed: ${error.message}`, 'error');
     }
 }
 
+/**
+ * Show a fallback display when Perspective visualization fails
+ * @param {number} rowCount - Number of rows in result
+ * @param {string} sql - SQL query
+ * @param {number} executionTime - Query execution time in ms
+ */
+function showFallbackDisplay(rowCount, sql, executionTime) {
+    // Hide the perspective viewer
+    const viewer = document.getElementById('perspectiveViewer');
+    if (viewer) {
+        viewer.style.display = 'none';
+    }
+
+    // Create and show fallback display
+    const resultsContainer = document.querySelector('.card-body[style*="height"]');
+    if (!resultsContainer) return;
+
+    // Remove any existing fallback
+    const existingFallback = resultsContainer.querySelector('.p-3');
+    if (existingFallback) {
+        resultsContainer.removeChild(existingFallback);
+    }
+
+    // Create new fallback
+    const fallbackDiv = document.createElement('div');
+    fallbackDiv.className = 'p-3';
+    fallbackDiv.innerHTML = `
+        <div class="alert alert-success">
+            <h5>Query successfully executed</h5>
+            <p>Your query returned ${rowCount} rows.</p>
+            <p>SQL: <code>${sql}</code></p>
+            <p>Execution time: ${executionTime}ms</p>
+        </div>
+    `;
+
+    resultsContainer.appendChild(fallbackDiv);
+}
+
+/**
+ * Safely clean up the Perspective viewer without modifying its HTML directly
+ */
+async function safelyCleanupPerspective() {
+    try {
+        // Check if the table exists and delete it
+        if (window.perspectiveTable) {
+            try {
+                await window.perspectiveTable.delete();
+                console.log('Successfully deleted existing table');
+            } catch (e) {
+                console.warn('Error deleting table:', e);
+            }
+            window.perspectiveTable = null;
+        }
+
+        // Reset the viewer with a minimal empty table
+        if (isPerspectiveAvailable()) {
+            const viewer = document.getElementById('perspectiveViewer');
+            if (viewer) {
+                const emptyData = { message: ['No data loaded'] };
+                try {
+                    const emptyTable = await window.perspective.worker().table(emptyData);
+                    await viewer.load(emptyTable);
+                    window.perspectiveTable = emptyTable;
+                    console.log('Reset viewer with empty table');
+                } catch (e) {
+                    console.warn('Error resetting viewer:', e);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('Cleanup error:', error);
+    }
+}
+
+/**
+ * Display a fallback result card when Perspective can't display the data
+ */
+function showFallbackResult(rowCount, sql, executionTime) {
+    const viewer = document.getElementById('perspectiveViewer');
+    if (viewer) {
+        viewer.innerHTML = `
+            <div class="p-3">
+                <div class="alert alert-success">
+                    <h5>Query successful</h5>
+                    <p>Your query returned ${rowCount} rows.</p>
+                    <p>SQL: <code>${sql}</code></p>
+                    <p>Execution time: ${executionTime}ms</p>
+                </div>
+            </div>
+        `;
+    }
+}
 
 /**
  * Load Arrow data into Perspective
@@ -600,24 +811,6 @@ async function handleNlQuery(e) {
  */
 async function loadArrowDataToPerspective(arrowData) {
     try {
-        // Check if Perspective is available
-        if (!isPerspectiveAvailable()) {
-            console.error('Perspective not available - data cannot be visualized');
-            showToast('Visualization engine not available', 'error');
-
-            // Fall back to displaying a basic message
-            const resultsContainer = document.querySelector('#perspectiveViewer').parentElement;
-            if (resultsContainer) {
-                resultsContainer.innerHTML = `
-                    <div class="alert alert-warning m-3">
-                        <h5>Visualization engine unavailable</h5>
-                        <p>Perspective is not loaded. Your query executed successfully, but results cannot be visualized.</p>
-                    </div>
-                `;
-            }
-            return false;
-        }
-
         // Get the viewer element
         const viewer = document.getElementById('perspectiveViewer');
         if (!viewer) {
@@ -665,46 +858,91 @@ async function loadArrowDataToPerspective(arrowData) {
 }
 
 /**
- * Cleanup any existing Perspective table to prevent memory leaks
+ * Load Arrow data into Perspective using direct module reference
+ * @param {ArrayBuffer} arrowBuffer - The Arrow data in IPC format
+ * @returns {Promise<boolean>} - Whether loading was successful
  */
-async function cleanupExistingTable() {
+async function loadArrowData(arrowBuffer) {
     try {
-        const viewer = document.getElementById('perspectiveViewer');
+        console.log('Loading Arrow data, size:', arrowBuffer.byteLength, 'bytes');
 
-        // First try to get the current view and delete it
-        if (viewer) {
-            try {
-                if (typeof viewer.getView === 'function') {
-                    const view = await viewer.getView();
-                    if (view) {
-                        await view.delete();
-                    }
-                }
-            } catch (e) {
-                console.warn('Error cleaning up view:', e);
-            }
-
-            // Try to clear the viewer using its delete method
-            try {
-                if (typeof viewer.delete === 'function') {
-                    await viewer.delete();
-                }
-            } catch (e) {
-                console.warn('Error clearing viewer:', e);
-            }
+        // Make sure the data is valid
+        if (!arrowBuffer || arrowBuffer.byteLength === 0) {
+            console.error('Empty or invalid Arrow data buffer');
+            return false;
         }
 
-        // Then delete the table if it exists
+        // Use dynamic import to ensure we have the module
+        console.log('Importing Perspective module directly');
+        const perspectiveModule = await import('https://cdn.jsdelivr.net/npm/@finos/perspective@2.5.0/dist/cdn/perspective.js');
+
+        // Create a worker from the imported module
+        const worker = perspectiveModule.default.worker();
+
+        // Clean up existing table
         if (window.perspectiveTable) {
             try {
                 await window.perspectiveTable.delete();
                 window.perspectiveTable = null;
             } catch (e) {
-                console.warn('Error cleaning up table:', e);
+                console.warn('Error cleaning up previous table:', e);
             }
         }
-    } catch (e) {
-        console.warn('Error during cleanup:', e);
+
+        // Get the viewer element
+        const viewer = document.getElementById('perspectiveViewer');
+        if (!viewer) {
+            console.error('Perspective viewer element not found');
+            return false;
+        }
+
+        // Create table from Arrow buffer
+        console.log('Creating table from Arrow buffer');
+        const table = await worker.table(arrowBuffer);
+
+        // Load the table into the viewer
+        console.log('Loading table into viewer');
+        await viewer.load(table);
+
+        // Store reference for later
+        window.perspectiveTable = table;
+
+        console.log('Arrow data loaded successfully into Perspective');
+        return true;
+    } catch (error) {
+        console.error('Error loading Arrow data:', error);
+        return false;
+    }
+}
+
+/**
+ * Carefully cleanup existing Perspective table
+ */
+async function cleanupExistingTable() {
+    console.log('Cleaning up existing Perspective table');
+
+    try {
+        // Check for viewer element
+        const viewer = document.getElementById('perspectiveViewer');
+        if (!viewer) return;
+
+        // Clear HTML content if present
+        if (viewer.innerHTML.includes('<div')) {
+            viewer.innerHTML = '';
+        }
+
+        // Clean up existing table
+        if (window.perspectiveTable) {
+            try {
+                await window.perspectiveTable.delete();
+                console.log('Deleted existing Perspective table');
+            } catch (e) {
+                console.warn('Error deleting Perspective table:', e);
+            }
+            window.perspectiveTable = null;
+        }
+    } catch (error) {
+        console.warn('Error in cleanupExistingTable:', error);
     }
 }
 

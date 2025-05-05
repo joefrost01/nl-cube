@@ -46,29 +46,42 @@ class QueryManager {
             // Call the SQL generated callback
             this.onSqlGenerated(generatedSql);
 
-            // Get query metadata from JSON
-            const metadata = await response.json();
+            // Get metadata from headers
+            const rowCount = parseInt(response.headers.get('x-total-count') || '0', 10);
+            const columnsJson = response.headers.get('x-columns') || '[]';
+            const columns = JSON.parse(columnsJson);
+
+            // Get the actual data as ArrayBuffer for Arrow format
+            const arrowData = await response.arrayBuffer();
 
             // Add to history
             const historyItem = {
                 question,
                 sql: generatedSql,
                 executionTime,
-                rowCount: metadata.row_count,
-                columns: metadata.columns,
+                rowCount,
+                columns,
                 timestamp: new Date().toISOString()
             };
 
             this.addToHistory(historyItem);
 
-            // Call the query complete callback
-            this.onQueryComplete(historyItem, metadata);
+            // Create metadata object
+            const metadata = {
+                row_count: rowCount,
+                columns: columns,
+                execution_time_ms: executionTime
+            };
+
+            // Call the query complete callback with arrow data
+            this.onQueryComplete(historyItem, metadata, arrowData);
 
             return {
                 success: true,
                 sql: generatedSql,
                 metadata,
-                executionTime
+                executionTime,
+                arrowData  // Return the arrow data
             };
         } catch (error) {
             // Call error callback

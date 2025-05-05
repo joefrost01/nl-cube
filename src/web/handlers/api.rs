@@ -144,41 +144,31 @@ pub async fn execute_query(
         .map(|field| field.name().clone())
         .collect::<Vec<String>>();
 
-    // Create metadata
-    let metadata = QueryMetadata {
-        row_count,
-        execution_time_ms: start_time.elapsed().as_millis() as u64,
-        columns: columns.clone(), // Clone here to keep ownership of columns
-    };
-
     // Serialize record batches to IPC format
     let mut buffer = Vec::new();
 
-    // Check if we have record batches
-    if !record_batches.is_empty() {
-        // Create a stream writer with the schema from the first batch
-        let mut stream_writer = StreamWriter::try_new(&mut buffer, schema.deref()).map_err(|e| {
-            error!("Failed to create Arrow stream writer: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
-        })?;
+    // Create a file writer with the schema
+    let mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref()).map_err(|e| {
+        error!("Failed to create Arrow file writer: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
+    })?;
 
-        // Write all record batches to the buffer
-        for batch in record_batches {
-            stream_writer.write(&batch).map_err(|e| {
-                error!("Failed to write Arrow batch: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
-            })?;
-        }
-
-        // Finalize the stream
-        stream_writer.finish().map_err(|e| {
-            error!("Failed to finalize Arrow stream: {}", e);
+    // Write all record batches to the buffer
+    for batch in &record_batches {
+        file_writer.write(batch).map_err(|e| {
+            error!("Failed to write Arrow batch: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
         })?;
     }
 
+    // Finalize the stream
+    file_writer.finish().map_err(|e| {
+        error!("Failed to finalize Arrow file: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to serialize Arrow data: {}", e))
+    })?;
+
     info!("Query executed successfully. Row count: {}, Execution time: {}ms",
-          row_count, metadata.execution_time_ms);
+          row_count, start_time.elapsed().as_millis());
 
     // Create response with Arrow data and metadata headers
     let mut headers = HeaderMap::new();
@@ -188,7 +178,7 @@ pub async fn execute_query(
         headers.insert("X-Total-Count", count_header);
     }
 
-    if let Ok(time_header) = HeaderValue::from_str(&metadata.execution_time_ms.to_string()) {
+    if let Ok(time_header) = HeaderValue::from_str(&start_time.elapsed().as_millis().to_string()) {
         headers.insert("X-Execution-Time", time_header);
     }
 
@@ -266,12 +256,11 @@ pub async fn nl_query(
     let target_subject = determine_query_subject(&app_state).await?;
     info!("Using subject '{}' for query", target_subject);
 
-    // Get the table metadata for only the current subject
+    // Get the table metadata for the current subject
     let table_metadata = match app_state.get_table_metadata(Some(&target_subject)).await {
         Ok(metadata) => metadata,
         Err(e) => {
             error!("Failed to get table metadata: {}", e);
-            // Provide a fallback minimal schema description
             format!("")
         }
     };
@@ -283,7 +272,7 @@ pub async fn nl_query(
         ));
     }
 
-    // Get LLM manager and generate SQL
+    // Generate SQL using LLM
     let llm = Arc::clone(&app_state.llm_manager);
     let raw_sql = {
         let mgr = llm.lock().await;
@@ -292,132 +281,143 @@ pub async fn nl_query(
         })?
     };
 
-    // Extra validation step: ensure we have usable SQL
+    // Validate SQL
     let sql = if raw_sql.trim().is_empty() || raw_sql.trim() == "--" || raw_sql.trim().starts_with("-- ") {
-        // Fallback to a simple COUNT query if the LLM output is unusable
         info!("LLM generated empty or comment-only SQL, using fallback query");
         "SELECT COUNT(*) FROM orders;".to_string()
     } else {
-        raw_sql.replace("`", "")  // Clean any backticks
+        raw_sql.replace("`", "")
     };
 
-    let sql_for_headers = sql.clone();  // Clone here for use outside the task
-
+    let sql_for_headers = sql.clone();
     info!("Validated SQL: {}", sql);
 
-    // Execute the query
-    let result = app_state.schema_manager.execute_query(&sql, &target_subject).await;
-    let execution_time = std::time::Instant::now().elapsed().as_millis() as u64;
+    // Build the path to the subject database
+    let subject_dir = app_state.data_dir.join(&target_subject);
+    let db_path = subject_dir.join(format!("{}.duckdb", target_subject));
+    debug!("Using database at path: {}", db_path.display());
 
-    match result {
-        Ok(rows) => {
-            // Create a response with metadata
-            let mut headers = HeaderMap::new();
-            if let Ok(v) = HeaderValue::from_str(&sql_for_headers) {
-                headers.insert(HeaderName::from_static("x-generated-sql"), v);
-            }
+    // Clone for use in the blocking task
+    let db_path_string = db_path.to_string_lossy().to_string();
+    let sql_to_execute = sql.clone();
 
-            // Add row count and execution time
-            if let Ok(v) = HeaderValue::from_str(&rows.len().to_string()) {
-                headers.insert(HeaderName::from_static("x-total-count"), v);
-            }
+    // Execute the query and get Arrow data in a blocking task
+    let blocking_task = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, usize, Vec<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
+        let start_time = std::time::Instant::now();
 
-            if let Ok(v) = HeaderValue::from_str(&execution_time.to_string()) {
-                headers.insert(HeaderName::from_static("x-execution-time"), v);
-            }
+        // Connect to the database
+        let conn = match duckdb::Connection::open(&db_path_string) {
+            Ok(conn) => conn,
+            Err(e) => return Err(Box::new(e))
+        };
 
-            // Extract column names from the first row if available
-            let columns = if !rows.is_empty() {
-                rows[0].keys().cloned().collect()
-            } else {
-                // Default column for COUNT queries
-                if sql_for_headers.to_uppercase().contains("COUNT") {
-                    vec!["count".to_string()]
-                } else {
-                    vec![]
-                }
-            };
+        // Prepare the statement
+        let mut stmt = match conn.prepare(&sql_to_execute) {
+            Ok(stmt) => stmt,
+            Err(e) => return Err(Box::new(e))
+        };
 
-            // Create the metadata
-            let metadata = QueryMetadata {
-                row_count: rows.len(),
-                execution_time_ms: execution_time,
-                columns
-            };
+        // Execute and get Arrow results
+        let arrow_batch = match stmt.query_arrow([]) {
+            Ok(batch) => batch,
+            Err(e) => return Err(Box::new(e))
+        };
 
-            // Create the response
-            let response = (StatusCode::OK, headers, Json(metadata)).into_response();
+        let schema = arrow_batch.get_schema();
 
-            Ok(response)
-        },
-        Err(e) => {
-            error!("Query execution error: {}", e);
+        // Get column names
+        let columns = schema.fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect::<Vec<String>>();
 
-            // Try a different approach - direct database connection
-            let data_dir = app_state.data_dir.join(&target_subject);
-            let db_path = data_dir.join(format!("{}.duckdb", target_subject));
+        // Collect the Arrow batch into a Vec of RecordBatch
+        let record_batches = arrow_batch.collect::<Vec<_>>().to_vec();
 
-            if db_path.exists() {
-                // Use a direct connection for the fallback approach
-                info!("Trying fallback with direct connection to: {}", db_path.display());
+        // Get row count
+        let row_count: usize = record_batches.iter().map(|batch| batch.num_rows()).sum();
 
-                let fallback_sql = if sql.trim().is_empty() || sql.trim().starts_with("--") {
-                    "SELECT COUNT(*) FROM orders;".to_string()
-                } else {
-                    sql.clone()
-                };
+        // Serialize record batches to IPC format
+        let mut buffer = Vec::new();
 
-                let result = tokio::task::spawn_blocking({
-                    let sql = fallback_sql;
-                    let db_path = db_path.clone();
+        // Create a stream writer with the schema
+        let mut stream_writer = match arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref()) {
+            Ok(writer) => writer,
+            Err(e) => return Err(Box::new(e))
+        };
 
-                    move || -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
-                        let conn = duckdb::Connection::open(&db_path)?;
-                        let count: i64 = conn.query_row(&sql, [], |row| row.get(0))?;
-                        Ok(count)
-                    }
-                }).await;
-
-                match result {
-                    Ok(Ok(_)) => {
-                        // Create a response with metadata
-                        let mut headers = HeaderMap::new();
-                        if let Ok(v) = HeaderValue::from_str(&sql_for_headers) {
-                            headers.insert(HeaderName::from_static("x-generated-sql"), v);
-                        }
-
-                        // Add execution time
-                        if let Ok(v) = HeaderValue::from_str(&execution_time.to_string()) {
-                            headers.insert(HeaderName::from_static("x-execution-time"), v);
-                        }
-
-                        // Create metadata for COUNT result
-                        let column_name = if sql_for_headers.contains("total_orders") {
-                            "total_orders"
-                        } else if sql_for_headers.contains("number_of_orders") {
-                            "number_of_orders"
-                        } else {
-                            "count"
-                        };
-
-                        let metadata = QueryMetadata {
-                            row_count: 1,  // COUNT queries always return 1 row
-                            execution_time_ms: execution_time,
-                            columns: vec![column_name.to_string()]
-                        };
-
-                        // Create response with the direct count value
-                        Ok((StatusCode::OK, headers, Json(metadata)).into_response())
-                    },
-                    _ => {
-                        Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Query execution error: {}", e)))
-                    }
-                }
-            } else {
-                Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Query execution error: {}", e)))
+        // Write all record batches to the buffer
+        for batch in &record_batches {
+            if let Err(e) = stream_writer.write(batch) {
+                return Err(Box::new(e));
             }
         }
+
+        // Finalize the stream
+        if let Err(e) = stream_writer.finish() {
+            return Err(Box::new(e));
+        }
+
+        let execution_time = start_time.elapsed().as_millis() as u64;
+
+        Ok((buffer, row_count, columns, execution_time))
+    });
+
+    // Properly handle the JoinError
+    let join_result = blocking_task.await;
+    let task_result = match join_result {
+        Ok(result) => result,
+        Err(join_err) => {
+            error!("Task join error: {}", join_err);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database task execution failed: {}", join_err)
+            ));
+        }
+    };
+
+    // Handle the actual task result
+    let (arrow_buffer, row_count, columns, execution_time) = match task_result {
+        Ok(result) => result,
+        Err(err) => {
+            error!("Database query error: {}", err);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database query failed: {}", err)
+            ));
+        }
+    };
+
+    // Create the response with headers
+    let mut headers = HeaderMap::new();
+
+    // Set content type for Arrow data
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.apache.arrow.file")
+    );
+
+    // Add metadata headers
+    if let Ok(v) = HeaderValue::from_str(&sql_for_headers) {
+        headers.insert(HeaderName::from_static("x-generated-sql"), v);
     }
+
+    if let Ok(v) = HeaderValue::from_str(&row_count.to_string()) {
+        headers.insert(HeaderName::from_static("x-total-count"), v);
+    }
+
+    if let Ok(v) = HeaderValue::from_str(&execution_time.to_string()) {
+        headers.insert(HeaderName::from_static("x-execution-time"), v);
+    }
+
+    if let Ok(columns_json) = serde_json::to_string(&columns) {
+        if let Ok(v) = HeaderValue::from_str(&columns_json) {
+            headers.insert(HeaderName::from_static("x-columns"), v);
+        }
+    }
+
+    // Return the Arrow data with headers
+    Ok((StatusCode::OK, headers, arrow_buffer).into_response())
 }
 
 async fn determine_query_subject(app_state: &Arc<AppState>) -> Result<String, (StatusCode, String)> {
