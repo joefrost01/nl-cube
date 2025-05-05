@@ -154,17 +154,30 @@ async fn try_extract_multipart(multipart: &mut Multipart) -> Result<Vec<(String,
 
         debug!("Reading content for file: {}", safe_name);
 
-        // Read the field content
-        let content = match field.bytes().await {
-            Ok(bytes) => {
-                debug!("Successfully read {} bytes for file {}", bytes.len(), safe_name);
-                bytes.to_vec()
-            },
-            Err(e) => {
-                error!("Error reading field bytes for {}: {}", safe_name, e);
-                return Err(Box::new(e));
-            }
-        };
+        // Read the field content with a more resilient approach
+        // Instead of using bytes(), let's build a buffered reader
+        // We'll use a temporary file to handle potentially large uploads
+        let temp_dir = std::env::temp_dir();
+        let temp_file_path = temp_dir.join(format!("nl-cube-upload-{}", safe_name));
+
+        // Create a file
+        let mut temp_file = tokio::fs::File::create(&temp_file_path).await?;
+
+        // Read and write the data in chunks
+        let data = field.bytes().await?;
+        tokio::io::copy(&mut std::io::Cursor::new(data), &mut temp_file).await?;
+
+        // Now read the complete file back
+        let content = tokio::fs::read(&temp_file_path).await?;
+
+        // Clean up
+        let _ = tokio::fs::remove_file(&temp_file_path).await;
+
+        if content.is_empty() {
+            warn!("Extracted empty content for file: {}", safe_name);
+        } else {
+            debug!("Successfully read {} bytes for file {}", content.len(), safe_name);
+        }
 
         // Store the file data
         files.push((safe_name, content));

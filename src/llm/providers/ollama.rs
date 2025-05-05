@@ -174,7 +174,7 @@ Based on your instructions, here is the SQL query I have generated to answer the
         info!("Could not extract valid SQL from response, using fallback COUNT query");
 
         // Generate a fallback COUNT query
-        "SELECT COUNT(*) FROM orders;".to_string()
+        "".to_string()
     }
 }
 

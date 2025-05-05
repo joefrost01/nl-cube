@@ -11,9 +11,10 @@ tower-http = { version = "0.6.2", features = [
     "fs",
     "cors",
     "trace",
-    "compression-br",     # For Brotli compression
-    "compression-gzip",   # For Gzip compression
-    "compression-deflate" # For Deflate compression
+    "compression-br",
+    "compression-gzip",
+    "compression-deflate",
+    "limit"
 ]}
 hyper = { version = "1", features = ["server"] }
 hyper-util = "0.1.10"

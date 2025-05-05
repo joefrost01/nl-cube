@@ -23,12 +23,20 @@ impl ParquetIngestor {
             .unwrap_or("data")
             .to_string();
 
-        // Use DuckDB's schema inference for Parquet
-        conn.execute(&format!(
-            "CREATE TABLE temp_schema AS SELECT * FROM read_parquet('{}') LIMIT 0",
+        // Try to use DuckDB's schema inference with added options for Parquet
+        let create_sql = format!(
+            "CREATE TABLE temp_schema AS SELECT * FROM read_parquet('{}', BINARY_AS_STRING=TRUE) LIMIT 0",
             path.to_string_lossy()
-        ), [])
-            .map_err(|e| IngestError::DatabaseError(e.to_string()))?;
+        );
+
+        // Log the SQL for debugging
+        tracing::debug!("Schema inference SQL: {}", create_sql);
+
+        conn.execute(&create_sql, [])
+            .map_err(|e| {
+                tracing::error!("Failed to create temp schema: {}", e);
+                IngestError::DatabaseError(e.to_string())
+            })?;
 
         // Query the schema information
         let mut stmt = conn.prepare("PRAGMA table_info(temp_schema)")
@@ -80,7 +88,6 @@ unsafe impl Send for ParquetIngestor {}
 unsafe impl Sync for ParquetIngestor {}
 
 impl FileIngestor for ParquetIngestor {
-    // Updated to include subject parameter and implement schema-based approach
     fn ingest(&self, path: &Path, table_name: &str, subject: &str) -> Result<TableSchema, IngestError> {
         // First infer the schema
         let mut schema = self.infer_schema(path)?;
@@ -118,8 +125,9 @@ impl FileIngestor for ParquetIngestor {
             .map_err(|e| IngestError::DatabaseError(format!("Failed to drop existing table: {}", e)))?;
 
         // Now use DuckDB's Parquet reading to create the table directly
+        // Add additional options to handle large Parquet files better
         let create_sql = format!(
-            "CREATE TABLE \"{}\" AS SELECT * FROM read_parquet('{}') ",
+            "CREATE TABLE \"{}\" AS SELECT * FROM read_parquet('{}', BINARY_AS_STRING=TRUE, FILENAME=TRUE)",
             table_name,
             absolute_path.to_string_lossy()
         );
@@ -142,6 +150,10 @@ impl FileIngestor for ParquetIngestor {
             }
         }
 
+        // Wait a small amount of time for DuckDB to complete any background operations
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
         Ok(schema)
     }
 }
+

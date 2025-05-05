@@ -369,19 +369,6 @@ fn get_tables_from_connection(conn: &duckdb::Connection) -> Result<Vec<String>, 
         }
     }
 
-    // If we still have no tables, try a direct approach with common table names
-    if tables.is_empty() {
-        for possible_table in &["orders", "customers", "products", "sales"] {
-            let query = format!("SELECT 1 FROM \"{}\" LIMIT 1", possible_table);
-            match conn.prepare(&query) {
-                Ok(_) => {
-                    tables.push(possible_table.to_string());
-                },
-                Err(_) => { /* Table doesn't exist */ }
-            }
-        }
-    }
-
     Ok(tables)
 }
 

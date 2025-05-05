@@ -323,12 +323,7 @@ pub async fn nl_query(
     };
 
     // Validate SQL
-    let sql = if raw_sql.trim().is_empty() || raw_sql.trim() == "--" || raw_sql.trim().starts_with("-- ") {
-        info!("LLM generated empty or comment-only SQL, using fallback query");
-        "SELECT COUNT(*) FROM orders;".to_string()
-    } else {
-        raw_sql.replace("`", "")
-    };
+    let sql = raw_sql.replace("`", "");
 
     let sql_for_headers = sql.clone();
     info!("Validated SQL: {}", sql);
@@ -541,14 +536,7 @@ fn apply_simple_qualification(sql: &str, tables: &[String], schema: &str) -> Str
         // Instead, create a new string and use replace_range
 
         // Fix for table.column references - using a simpler approach with string replacement
-        let column_pattern = format!("{}.order_id", table);
         let column_replacement = format!("\"{}\".\"{}\".", schema, table);
-
-        // Safely replace table.column patterns
-        if result.contains(&column_pattern) {
-            let new_pattern = column_replacement + "order_id";
-            result = result.replace(&column_pattern, &new_pattern);
-        }
     }
 
     result
@@ -688,26 +676,6 @@ fn get_tables_from_database(conn: &duckdb::Connection) -> Result<Vec<String>, Bo
         }
     }
 
-    // Last resort - try direct SQL on common table names
-    if tables.is_empty() {
-        for table_name in &["orders", "customers", "products", "sales"] {
-            let check_sql = format!("SELECT 1 FROM \"{}\" LIMIT 1", table_name);
-            match conn.prepare(&check_sql) {
-                Ok(mut stmt) => {
-                    match stmt.query([]){
-                        Ok(_) => {
-                            // If query successful, table exists
-                            tables.push(table_name.to_string());
-                        },
-                        Err(_) => {} // Skip if error
-                    }
-                },
-                Err(_) => {} // Skip if error
-            }
-        }
-    }
-
-    debug!("Found {} tables in database", tables.len());
     Ok(tables)
 }
 

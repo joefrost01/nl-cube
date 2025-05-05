@@ -122,7 +122,7 @@ impl SchemaManager {
 
                                     // If we still don't have tables, try a third approach with PRAGMA
                                     if tables.is_empty() {
-                                        match conn.prepare("PRAGMA table_list") {
+                                        match conn.prepare("PRAGMA table_info(sqlite_master)") {
                                             Ok(mut pragma_stmt) => {
                                                 let pragma_rows = pragma_stmt.query_map([], |row| row.get::<_, String>(1))?; // 1 is the name column
                                                 for row in pragma_rows {
@@ -137,21 +137,7 @@ impl SchemaManager {
                                                 }
                                             },
                                             Err(e) => {
-                                                error!("Error preparing PRAGMA table_list query: {}", e);
-                                            }
-                                        }
-                                    }
-
-                                    // Last resort - try direct SQL on common table names
-                                    if tables.is_empty() {
-                                        for table_name in &["orders", "customers", "products", "sales"] {
-                                            let query = format!("SELECT 1 FROM \"{}\" LIMIT 1", table_name);
-                                            match conn.prepare(&query) {
-                                                Ok(_) => {
-                                                    // If prepare worked, table exists
-                                                    tables.push(table_name.to_string());
-                                                }
-                                                Err(_) => {} // Skip if error
+                                                error!("Error preparing PRAGMA table_info(sqlite_master) query: {}", e);
                                             }
                                         }
                                     }
@@ -212,16 +198,7 @@ impl SchemaManager {
                 if let Ok(count) = count_result {
                     let mut results = Vec::new();
                     let mut row_map = HashMap::new();
-
-                    // Determine an appropriate column name
-                    let column_name = if sql_to_execute.contains("number_of_orders") {
-                        "number_of_orders"
-                    } else if sql_to_execute.contains("total_orders") {
-                        "total_orders"
-                    } else {
-                        "count"
-                    };
-
+                    let column_name = "count";
                     row_map.insert(column_name.to_string(), count.to_string());
                     results.push(row_map);
                     return Ok(results);
@@ -249,17 +226,6 @@ impl SchemaManager {
                         error!("Failed to get column name for index {}: {}", i, e);
                         column_names.push(format!("column_{}", i));
                     }
-                }
-            }
-
-            // If we still have no column names for a COUNT query, add a default
-            if column_names.is_empty() && sql_to_execute.to_uppercase().contains("COUNT") {
-                if sql_to_execute.contains("number_of_orders") {
-                    column_names.push("number_of_orders".to_string());
-                } else if sql_to_execute.contains("total_orders") {
-                    column_names.push("total_orders".to_string());
-                } else {
-                    column_names.push("count".to_string());
                 }
             }
 
