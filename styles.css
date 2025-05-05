@@ -1,0 +1,19 @@
+
+.navbar-logo {
+    max-height: 60px;
+    height: 60px;
+    width: auto;
+    padding: 1px;
+    margin: 1px;
+    border-radius: 4px;
+}
+
+.navbar-brand-logo {
+    padding: 1px;
+    margin: 1px;
+}
+
+.navbar {
+    padding:4px;
+}
+

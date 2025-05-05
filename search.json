@@ -1,0 +1,52 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "NL-Cube",
+    "section": "",
+    "text": "NL-Cube is an offline-first, natural language analytics engine that transforms CSV and Parquet files into lightning-fast, pivotable data cubes powered by DuckDB — with full natural language querying built-in.\nNo cloud dependency. No setup hell. One binary. Your data, your control.\n\n\n\nNatural Language Querying\nAsk real questions (“Top 5 regions by revenue in 2025”) and get instant answers.\nFlexible Data Ingestion\nDrop CSV or Parquet files into folders to populate your own subject areas.\nLightning-Fast Execution\nQueries are translated into optimized DuckDB SQL and executed instantly.\nEmbedded UI\nAnalyze, pivot, and visualize your data using an integrated FINOS Perspective front-end.\nOffline, Secure, Private\nRuns entirely on your laptop or server. No mandatory cloud APIs. Full local control.\nModel Flexibility\nSupports multiple LLM backends (local LLMs like SQLCoder via ezllama, or cloud models via Rig).\n\n\n\n\n\nCreate Subjects\nOrganize your datasets into logical folders called “Subjects”.\nDrop Data\nAdd CSV or Parquet files. NL-Cube ingests them automatically.\nAsk Questions\nQuery your data in natural language. NL-Cube translates your question into SQL.\nExplore Results\nUse the embedded Perspective UI to slice, dice, and visualize your answers.\n\n\n\n\n\nRust for extreme performance and reliability.\nDuckDB for fast, embeddable analytics.\nSQLCoder / Rig / ezllama for local and flexible LLM-driven querying.\nAxum + HTMX + Perspective for the lightweight, powerful UI.\n\n\n\n\nNL-Cube is designed for engineers, analysts, and builders who want:\n\nZero cloud lock-in.\nTrue local-first analytics.\nFull control over how their data is queried and presented.\n\nIf you can describe it, NL-Cube will help you analyze it.\n\n\nNL-Cube: “Your data. Your questions. Your machine.”",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#highlights",
+    "href": "index.html#highlights",
+    "title": "NL-Cube",
+    "section": "",
+    "text": "Natural Language Querying\nAsk real questions (“Top 5 regions by revenue in 2025”) and get instant answers.\nFlexible Data Ingestion\nDrop CSV or Parquet files into folders to populate your own subject areas.\nLightning-Fast Execution\nQueries are translated into optimized DuckDB SQL and executed instantly.\nEmbedded UI\nAnalyze, pivot, and visualize your data using an integrated FINOS Perspective front-end.\nOffline, Secure, Private\nRuns entirely on your laptop or server. No mandatory cloud APIs. Full local control.\nModel Flexibility\nSupports multiple LLM backends (local LLMs like SQLCoder via ezllama, or cloud models via Rig).",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#how-it-works",
+    "href": "index.html#how-it-works",
+    "title": "NL-Cube",
+    "section": "",
+    "text": "Create Subjects\nOrganize your datasets into logical folders called “Subjects”.\nDrop Data\nAdd CSV or Parquet files. NL-Cube ingests them automatically.\nAsk Questions\nQuery your data in natural language. NL-Cube translates your question into SQL.\nExplore Results\nUse the embedded Perspective UI to slice, dice, and visualize your answers.",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#key-technologies",
+    "href": "index.html#key-technologies",
+    "title": "NL-Cube",
+    "section": "",
+    "text": "Rust for extreme performance and reliability.\nDuckDB for fast, embeddable analytics.\nSQLCoder / Rig / ezllama for local and flexible LLM-driven querying.\nAxum + HTMX + Perspective for the lightweight, powerful UI.",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#philosophy",
+    "href": "index.html#philosophy",
+    "title": "NL-Cube",
+    "section": "",
+    "text": "NL-Cube is designed for engineers, analysts, and builders who want:\n\nZero cloud lock-in.\nTrue local-first analytics.\nFull control over how their data is queried and presented.\n\nIf you can describe it, NL-Cube will help you analyze it.\n\n\nNL-Cube: “Your data. Your questions. Your machine.”",
+    "crumbs": [
+      "Introduction"
+    ]
+  }
+]
