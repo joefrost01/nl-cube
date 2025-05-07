@@ -52,12 +52,7 @@ CREATE TABLE orc_table AS SELECT * FROM read_orc('data.orc');
 
 Configuration example:
 ```toml
-[llm]
-backend = "rig"
-api_url = "https://api.rig.dev"
-api_key = "${RIG_API_KEY}"
-
-# Multiple models can be configured
+# Different models can be configured
 [[llm.models]]
 name = "sqlcoder-34b"
 provider = "databricks"
