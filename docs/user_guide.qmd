@@ -1,0 +1,204 @@
+---
+title: "User Guide"
+format:
+  html:
+    toc: true
+---
+
+# NL-Cube User Guide
+
+This guide will help you get started with NL-Cube, from installation to running complex natural language queries against your data.
+
+## Installation
+
+### Download Binary
+
+Download the latest binary for your platform:
+
+```bash
+# Example for Linux
+curl -L https://github.com/joefrost01/nl-cube/releases/latest/download/nl-cube-linux-x86_64 -o nl-cube
+chmod +x nl-cube
+```
+
+### Configuration
+
+Create a `config.toml` file in the same directory as the binary:
+
+```toml
+data_dir = "data"
+
+[database]
+connection_string = "nl-cube.db"
+pool_size = 5
+
+[web]
+host = "127.0.0.1"
+port = 3000
+static_dir = "static"
+
+[llm]
+backend = "ollama"
+model = "sqlcoder"
+api_url = "http://localhost:11434/api/generate"
+```
+
+### Requirements
+
+- **Ollama** (if using local models): Follow [installation instructions](https://ollama.ai/download)
+- **SQLCoder model**: `ollama pull sqlcoder` (or another SQL-focused model)
+
+## Getting Started
+
+### Running NL-Cube
+
+Launch NL-Cube with your configuration:
+
+```bash
+./nl-cube --config config.toml
+```
+
+Then open your browser to [http://localhost:3000](http://localhost:3000)
+
+### Creating Your First Database
+
+1. Click on the "Databases" dropdown in the navigation bar
+2. Select "New Database"
+3. Enter a name (e.g., "sales")
+4. Click "Create"
+
+### Uploading Data Files
+
+1. Select your database from the dropdown
+2. Click "Upload" in the database panel
+3. Select CSV or Parquet files containing your data
+4. Click "Upload"
+
+The files will be ingested and made available as tables in your database.
+
+### Your First Natural Language Query
+
+1. Enter a question in the "Ask Question" box, such as:
+    - "What are the top 5 products by revenue?"
+    - "Show me monthly sales for 2024"
+    - "Compare average order value by region"
+2. Click "Run Query" or press Ctrl+Enter
+3. View the results in the visualization panel
+
+## Key Features
+
+### Natural Language Querying
+
+The core feature of NL-Cube is the ability to query your data using natural language. Here are some example questions you can ask:
+
+**Simple Aggregations:**
+- "What's the total revenue across all orders?"
+- "How many customers do we have in each region?"
+
+**Time-Based Analysis:**
+- "Show me the trend of orders by month in 2024"
+- "What was our revenue growth rate quarter over quarter?"
+
+**Complex Analytics:**
+- "What's the return rate by product category?"
+- "Show me products where sales have declined for 3 consecutive months"
+
+**Comparative Analysis:**
+- "Compare performance across regions"
+- "Which salespeople are performing above average?"
+
+### Data Visualization
+
+NL-Cube uses the FINOS Perspective library to provide interactive data visualizations:
+
+1. **Change Visualization Type:**
+    - Click on the visualization dropdown to select different views:
+    - Datagrid (default)
+    - Various chart types (bar, line, scatter, etc.)
+
+2. **Interactive Pivoting:**
+    - Drag and drop columns to rows, columns, and values areas
+    - Dynamically rearrange your data view
+
+3. **Filtering and Sorting:**
+    - Click column headers to sort
+    - Use the filter icon to apply filters
+
+4. **Export Options:**
+    - Export to CSV
+    - Copy data to clipboard
+    - Save current view
+
+### Working with Multiple Databases
+
+NL-Cube allows you to organize your data into separate databases (subjects):
+
+1. **Creating Databases:**
+    - Use the "New Database" option to create logical domains
+    - Example domains: "Sales", "Marketing", "HR", "Finance"
+
+2. **Switching Between Databases:**
+    - Select the database from the dropdown
+    - Tables will update to show data from that database
+
+3. **Database Isolation:**
+    - Each database has its own file storage
+    - Queries run against the currently selected database
+
+## Advanced Usage
+
+### Saving Reports (Todo)
+
+After executing a query that produces valuable insights:
+
+1. Click on "Reports" in the navigation bar
+2. Select "Save Report"
+3. Enter a name, category, and optional description
+4. Click "Save"
+
+Saved reports can be accessed from the Reports dropdown for future reference.
+
+### Query History
+
+NL-Cube keeps track of your recent queries:
+
+1. Click on "History" in the navigation bar to see recent queries
+2. Click on any query to run it again
+3. Use the "Clear" button to reset your history
+
+### SQL Preview
+
+For users who want to see the SQL behind the natural language:
+
+1. Toggle the "Show SQL" switch
+2. The generated SQL will appear below your question
+3. This is helpful for learning and debugging
+
+## Troubleshooting
+
+### Common Issues
+
+**No data appears after upload:**
+
+   * Check file format (should be valid CSV or Parquet)
+   * Verify file has headers and valid data 
+   * Check browser console for any error messages
+
+**Query returns unexpected results:**
+
+- Try rephrasing your question to be more specific
+- Toggle SQL preview to see how your question was interpreted
+- Examine the SQL to identify potential misinterpretations
+- Make sure that you refer to column names, the LLM won't necessarily figure out that customer means cust_id - larger LLMs will handle this better
+
+**Performance issues with large datasets:**
+
+- Consider splitting very large files into smaller chunks
+- Add specific filters to your natural language query
+- Limit the time range in your query when possible
+
+### Getting Help
+
+- Check the [GitHub repository](https://github.com/joefrost01/nl-cube) for issues and updates
+- Submit bug reports using the issue template
+- Contribute improvements via pull requests

@@ -1,0 +1,303 @@
+---
+title: "Roadmap"
+format:
+  html:
+    toc: true
+---
+
+# NL-Cube Roadmap
+
+This document outlines the planned future development of NL-Cube. The roadmap is organized into short-term, medium-term, and long-term goals to provide a clear vision of where the project is headed.
+
+## Data Import Enhancements
+
+### Additional Import Formats
+
+Expand NL-Cube's data ingestion capabilities to support all formats that DuckDB can handle:
+
+* **JSON Files**: Support for structured JSON data files
+* **Excel Files**: Direct import of XLSX/XLS spreadsheets
+* **ORC Files**: Support for Optimized Row Columnar format
+* **Avro Files**: Support for Apache Avro format
+* **XML Files**: Structured XML document ingestion
+* **HTTP/REST Sources**: Direct import from REST APIs
+* **Database Connections**: Import from other databases
+
+Implementation will leverage DuckDB's built-in capabilities:
+
+```sql
+-- Example of how DuckDB handles different formats
+CREATE TABLE json_table AS SELECT * FROM read_json('data.json', auto_detect=true);
+CREATE TABLE excel_table AS SELECT * FROM read_excel('data.xlsx');
+CREATE TABLE orc_table AS SELECT * FROM read_orc('data.orc');
+```
+
+### Enhanced Schema Inference
+
+* Improved type detection for edge cases
+* Better handling of date/time formats
+* Detection of primary and foreign keys
+* Smart detection of hierarchical data
+* Preservation of original metadata
+
+## Expanded LLM Support
+
+### Configurable LLM Integration via Rig
+
+* Integration with Rig crate for LLM orchestration
+* User-selectable models through configuration
+* Dynamically switchable LLM providers
+* Model version tracking and compatibility checks
+* Performance benchmarking across models
+
+Configuration example:
+```toml
+[llm]
+backend = "rig"
+api_url = "https://api.rig.dev"
+api_key = "${RIG_API_KEY}"
+
+# Multiple models can be configured
+[[llm.models]]
+name = "sqlcoder-34b"
+provider = "databricks"
+model_id = "databricks/dbrx-instruct"
+
+[[llm.models]]
+name = "arctic-sqler"
+provider = "anthropic"
+model_id = "claude-3-opus-20240229"
+```
+
+### Prompt Template Customization
+
+* User-editable prompt templates
+* Domain-specific prompt optimization
+* Few-shot learning examples for specialized domains
+* Prompt versioning and A/B testing
+
+## Report Management
+
+### Report Generation and Saving
+
+* **Template-Based Reports**: Customizable report templates
+* **Scheduled Reports**: Automated report generation
+* **Export Formats**: PDF, Excel, HTML, and Markdown
+* **Collaboration**: Sharing and commenting on reports
+* **Versioning**: Track changes to reports over time
+
+### Visualization Library
+
+* Expanded chart types and visualizations
+* Custom visualization themes
+* Interactive dashboards
+* Embeddable report widgets
+* Annotation and markup tools
+
+## Advanced Data Modeling
+
+### Table Relationship Definition
+
+* GUI for defining relationships between tables
+* Automatic foreign key detection
+* Entity-relationship diagram generation
+* Join path recommendations for queries
+* Referential integrity enforcement
+
+Example relationship definition:
+```json
+{
+  "relationships": [
+    {
+      "from": {
+        "table": "orders",
+        "column": "customer_id"
+      },
+      "to": {
+        "table": "customers",
+        "column": "id"
+      },
+      "type": "many-to-one"
+    }
+  ]
+}
+```
+
+### Schema Management
+
+* Allow addition of data to existing tables
+* Schema evolution and migration
+* Column-level metadata and descriptions
+* Data quality constraints
+* Schema versioning
+
+## Real-Time Data Processing
+
+### Hot Watch Folder
+
+* Automated ingestion of files from watched directories
+* Configurable processing rules based on file patterns
+* Error handling and notification for problematic files
+* Throttling and batching for high-volume scenarios
+* Processing history and audit logs
+
+Configuration example:
+```toml
+[[watch_folders]]
+path = "data/incoming/sales"
+subject = "sales"
+pattern = "*.csv"
+table_prefix = "sales_"
+poll_interval_seconds = 30
+```
+
+### Streaming Data Support
+
+* Integration with Apache Kafka and other streaming platforms
+* Real-time data processing pipelines
+* Windowed aggregations on streaming data
+* Configurable stream processors
+* Stream-to-table materialization
+
+Example Kafka configuration:
+```toml
+[[streaming.sources]]
+type = "kafka"
+bootstrap_servers = "kafka1:9092,kafka2:9092"
+topic = "sales_data"
+group_id = "nl-cube-consumer"
+subject = "sales"
+table = "real_time_sales"
+```
+
+### Aggregation Engine
+
+* User-defined aggregate definitions
+* Incremental aggregation updates
+* Time-based and event-based windows
+* Direct Perspective integration for live updates
+* Materialized view management
+
+## Security and Multi-User Support
+
+### OAuth Integration
+
+* Support for OAuth 2.0 authentication flows
+* Integration with identity providers (Google, GitHub, Microsoft)
+* JWT token handling
+* Role-based authorization
+* API key management for programmatic access
+
+### Multi-User Mode
+
+* User account management
+* Personalized settings and preferences
+* Resource quotas and usage tracking
+* Activity logging and audit trails
+* Access control for subjects and reports
+
+## Local LLM Integration
+
+### Bundled LLM Support
+
+* Option to bundle lightweight local LLMs
+* Optimized models for SQL generation
+* No internet dependency for core functionality
+* Fine-tuning tools for domain-specific datasets
+* Model switchover between local and remote as needed
+
+### Pre-Loaded Datasets
+
+* Domain-specific sample datasets
+* Example queries and reports
+* Guided tutorials using sample data
+* Benchmarking datasets
+* Easy data reset and refresh
+
+## User Experience Improvements
+
+### NL Query Auto-Complete
+
+* Intelligent suggestions as you type
+* Auto-completion for column names and values
+* Query history integration
+* Context-aware suggestions based on schema
+* Semantic understanding of partial queries
+
+### Progressive Web App
+
+* Offline capability
+* Mobile-friendly responsive design
+* Native app-like experience
+* Push notifications
+* Background synchronization
+
+### Keyboard Shortcuts and Power User Features
+
+* Comprehensive keyboard navigation
+* Customizable keyboard shortcuts
+* Command palette for quick actions
+* Batch operations
+* Query scripting capabilities
+
+## Enterprise Features
+
+### Advanced Administration
+
+* Centralized deployment management
+* Usage analytics and monitoring
+* Backup and disaster recovery
+* Resource governance
+* Health checks and diagnostics
+
+### Integration Ecosystem
+
+* API for third-party integration
+* Plugin architecture
+* Webhooks for event-driven workflows
+* SSO integration
+* Enterprise data catalog integration
+
+## Development Milestones
+
+### Short-Term (3-6 months)
+
+* **Additional file formats**: JSON, Excel
+* **Report saving and management**
+* **Basic relationship definition**
+* **Data append to existing tables**
+* **Auto-complete for column names**
+
+### Medium-Term (6-12 months)
+
+* **Hot watch folder for auto-ingestion**
+* **Streaming data support (Kafka)**
+* **User-defined aggregates**
+* **OAuth security integration**
+* **Local LLM bundling options**
+
+### Long-Term (12+ months)
+
+* **Full multi-user mode**
+* **Enterprise administration**
+* **Advanced streaming analytics**
+* **Comprehensive plugin system**
+* **AI-assisted data modeling**
+
+## Feedback and Prioritization
+
+The NL-Cube roadmap is guided by user feedback and community needs. We welcome contributions and suggestions through:
+
+* GitHub issues and discussions
+* Community forums
+* User feedback surveys
+* Usage analytics
+
+Priority will be given to features that:
+
+1. Improve core natural language query capabilities
+2. Enhance user experience for non-technical users
+3. Expand data connectivity options
+4. Simplify deployment and administration
+
+To contribute to the roadmap or provide feedback, please open an issue on the [GitHub repository](https://github.com/joefrost01/nl-cube).

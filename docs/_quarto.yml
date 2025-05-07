@@ -22,6 +22,16 @@ website:
     - contents:
         - text: "Introduction"
           href: index.qmd
+        - text: "Architecture"
+          href: architecture.qmd
+        - text: "User Guide"
+          href: user_guide.qmd
+        - text: "Technical Details"
+          href: technical_details.qmd
+        - text: "Developer Guide"
+          href: developer_guide.qmd
+        - text: "Roadmap"
+          href: roadmap.qmd
 
 # Theme configuration
 format:

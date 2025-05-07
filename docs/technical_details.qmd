@@ -1,0 +1,439 @@
+---
+title: "Technical Details"
+format:
+  html:
+    toc: true
+---
+
+# NL-Cube Technical Details
+
+This document provides in-depth technical information about NL-Cube's implementation, covering database integration, LLM functionality, and the data processing pipeline.
+
+## DuckDB Integration
+
+NL-Cube uses DuckDB as its embedded analytics database engine, chosen for its performance and ease of deployment.
+
+### Connection Management
+
+NL-Cube implements a sophisticated multi-database connection management system:
+
+1. **Connection Pool**: Maintains a configurable pool of database connections using `r2d2`
+   ```rust
+   // ConnectionManager implementation
+   impl ManageConnection for DuckDBConnectionManager {
+       type Connection = Connection;
+       type Error = duckdb::Error;
+
+       fn connect(&self) -> Result<Self::Connection, Self::Error> {
+           Connection::open(&self.connection_string)
+       }
+
+       fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
+           conn.execute("SELECT 1", [])?;
+           Ok(())
+       }
+
+       fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
+           false
+       }
+   }
+   ```
+
+2. **Multi-Database Support**: Each subject gets its own DuckDB database file
+   ```rust
+   pub struct MultiDbConnectionManager {
+       main_db_path: String,
+       data_dir: PathBuf,
+       attached_dbs: Arc<Mutex<HashMap<String, String>>>,
+   }
+   ```
+
+3. **Thread Safety**: Blocking database operations are executed in dedicated Tokio tasks
+   ```rust
+   tokio::task::spawn_blocking(move || {
+       // Database operations that might block
+       let conn = Connection::open(&db_path_string)?;
+       // ...
+   })
+   ```
+
+### Schema Management
+
+The `SchemaManager` component maintains metadata about database schemas:
+
+1. **Schema Discovery**: Scans subject directories for database files
+2. **Cache Management**: Maintains a cached view of schemas and tables
+3. **Refresh Mechanism**: Periodically updates schema information
+
+```rust
+pub struct SchemaManager {
+    schema_cache: RwLock<HashMap<String, Vec<String>>>,
+    last_refresh: RwLock<chrono::DateTime<chrono::Utc>>,
+    data_dir: PathBuf,
+}
+```
+
+### Query Execution Flow
+
+When executing a natural language query:
+
+1. **Context Gathering**: Schema information is extracted from the database
+2. **LLM Translation**: Natural language is translated to SQL
+3. **Execution**: SQL is executed against the appropriate subject database
+4. **Arrow Conversion**: Results are converted to Apache Arrow format
+5. **Response**: Arrow data is returned to the client for visualization
+
+```rust
+// Simplified query flow
+let table_metadata = app_state.get_table_metadata(Some(&target_subject)).await?;
+let raw_sql = mgr.generate_sql(&payload.question, &table_metadata).await?;
+let conn = duckdb::Connection::open(&db_path)?;
+let arrow_batch = stmt.query_arrow([])?;
+```
+
+## LLM Integration
+
+NL-Cube features a flexible LLM integration system that supports multiple backends through a provider architecture.
+
+### Provider Architecture
+
+The `SqlGenerator` trait defines the interface for LLM providers:
+
+```rust
+#[async_trait]
+pub trait SqlGenerator: Send + Sync {
+    async fn generate_sql(&self, question: &str, schema: &str) -> Result<String, LlmError>;
+}
+```
+
+Currently implemented providers include:
+
+1. **Ollama Provider**: For local model execution
+   ```rust
+   pub struct OllamaProvider {
+       client: reqwest::Client,
+       api_url: String,
+       model: String,
+   }
+   ```
+
+2. **Remote Provider**: For cloud-based LLM APIs
+   ```rust
+   pub struct RemoteLlmProvider {
+       client: reqwest::Client,
+       api_url: String,
+       api_key: String,
+       model: String,
+   }
+   ```
+
+### Prompt Engineering
+
+NL-Cube uses carefully crafted prompts to guide the LLM in generating SQL:
+
+1. **Schema Context**: Database structure is provided to the LLM
+2. **Clear Instructions**: The prompt contains specific SQL generation rules
+3. **Examples**: Sample queries help the model understand the expected output
+
+Example prompt template:
+```
+### Instructions:
+Your task is to convert a question into a SQL query for DuckDB, given a database schema.
+Adhere to these rules:
+- **Be careful with column names - they are case sensitive**
+- **Use the exact spelling of column names as provided in the schema**
+- **Deliberately go through the question and database schema word by word** to appropriately answer the question
+- **Use Table Aliases** to prevent ambiguity.
+- When creating a ratio, always cast the numerator as float
+
+### Input:
+Generate a SQL query that answers the question `{question}`.
+This query will run on a DuckDB database with the following tables and columns:
+
+{schema}
+
+### Expected SQL Format:
+- Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)
+- Reference column names exactly as shown in the schema
+- Make sure to use double quotes around column names with spaces or special characters
+- End your query with a semicolon
+
+### Response:
+Based on your instructions, here is the SQL query I have generated:
+```sql
+```
+
+### SQL Extraction and Validation
+
+After receiving the LLM response:
+
+1. **SQL Extraction**: The generated SQL is extracted from the response
+2. **Validation**: Basic syntax checks ensure the SQL is well-formed
+3. **Parameter Stripping**: Any parameters are properly formatted
+
+## Data Processing Pipeline
+
+### File Ingestion
+
+NL-Cube supports ingesting data from CSV and Parquet files through a flexible ingestor architecture:
+
+```rust
+pub trait FileIngestor: Send + Sync {
+    fn ingest(
+        &self,
+        path: &Path,
+        table_name: &str,
+        subject: &str,
+    ) -> Result<schema::TableSchema, IngestError>;
+}
+```
+
+The ingestion process for each file type:
+
+1. **CSV Ingestion**:
+    - Read sample rows to infer schema
+    - Create table with appropriate column types
+    - Use DuckDB's `read_csv_auto` for optimized loading
+    - Verify row count after ingestion
+
+2. **Parquet Ingestion**:
+    - Extract schema from Parquet metadata
+    - Create matching table structure
+    - Use DuckDB's `read_parquet` for optimized loading
+    - Handle binary fields and large files
+
+### Schema Inference
+
+NL-Cube uses a combination of techniques to infer the schema from data files:
+
+1. **Type Detection**: Analyzes sample data to determine column types
+2. **Nullability**: Determines if columns can contain NULL values
+3. **Constraints**: Identifies potential primary keys and constraints
+
+The schema is represented using a type-safe model:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DataType {
+    Integer,
+    BigInt,
+    Double,
+    String,
+    Boolean,
+    Date,
+    Timestamp,
+    Unknown(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnSchema {
+    pub name: String,
+    pub data_type: DataType,
+    pub nullable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableSchema {
+    pub name: String,
+    pub columns: Vec<ColumnSchema>,
+}
+```
+
+### Apache Arrow Integration
+
+NL-Cube uses Apache Arrow for efficient data interchange:
+
+1. **Query Results**: Database query results are converted to Arrow format
+2. **Streaming**: Data is streamed to the client in batches
+3. **Zero-Copy**: The format enables efficient memory usage
+4. **Client Integration**: Seamlessly integrates with Perspective visualization
+
+```rust
+// Convert query results to Arrow
+let arrow_batch = stmt.query_arrow([])?;
+let schema = arrow_batch.get_schema();
+let record_batches = arrow_batch.collect::<Vec<_>>().to_vec();
+
+// Serialize to IPC format
+let mut buffer = Vec::new();
+let mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref())?;
+for batch in &record_batches {
+    file_writer.write(batch)?;
+}
+file_writer.finish()?;
+```
+
+## Web API Reference
+
+NL-Cube provides a comprehensive REST API for programmatic access.
+
+### Core Endpoints
+
+#### Query Execution
+
+**POST /api/query**
+
+Executes a raw SQL query against the selected subject database.
+
+Request:
+```json
+{
+  "query": "SELECT * FROM orders LIMIT 10;"
+}
+```
+
+Response:
+- Content-Type: application/vnd.apache.arrow.file
+- Headers:
+    - X-Total-Count: Number of rows
+    - X-Execution-Time: Execution time in ms
+    - X-Columns: JSON array of column names
+    - X-Generated-SQL: The executed SQL query
+
+#### Natural Language Query
+
+**POST /api/nl-query**
+
+Translates a natural language question to SQL and executes it.
+
+Request:
+```json
+{
+  "question": "What are the top 5 products by revenue?"
+}
+```
+
+Response:
+- Content-Type: application/vnd.apache.arrow.file
+- Headers:
+    - X-Total-Count: Number of rows
+    - X-Execution-Time: Execution time in ms
+    - X-Columns: JSON array of column names
+    - X-Generated-SQL: The generated SQL query
+
+#### Database Management
+
+**GET /api/subjects**
+
+Returns a list of available subject databases.
+
+**GET /api/subjects/{subject}**
+
+Returns details about a specific subject, including tables.
+
+**POST /api/subjects/{subject}**
+
+Creates a new subject database.
+
+**POST /api/subjects/select/{subject}**
+
+Selects a subject as the current database context.
+
+**DELETE /api/subjects/{subject}**
+
+Deletes a subject database.
+
+#### File Upload
+
+**POST /api/upload/{subject}**
+
+Uploads files to a subject database for ingestion.
+
+- Content-Type: multipart/form-data
+- Supports CSV and Parquet files
+
+#### Schemas
+
+**GET /api/schema**
+
+Returns the schema definition for the current subject.
+
+#### Reports
+
+**GET /api/reports**
+
+Returns a list of saved reports.
+
+**GET /api/reports/{id}**
+
+Returns a specific saved report.
+
+**POST /api/reports**
+
+Saves a new report.
+
+**DELETE /api/reports/{id}**
+
+Deletes a saved report.
+
+### Authentication
+
+NL-Cube currently uses stateless authentication. Future versions will support OAuth.
+
+### Error Handling
+
+API errors follow a consistent format:
+
+```json
+{
+  "error": "Error message",
+  "status": 400
+}
+```
+
+Common status codes:
+- 200: Success
+- 400: Bad Request (invalid parameters)
+- 404: Not Found (subject or resource not found)
+- 500: Internal Server Error
+
+## Performance Optimizations
+
+NL-Cube includes several performance optimizations:
+
+1. **Connection Pooling**: Reuses database connections for efficiency
+2. **Async Processing**: Non-blocking I/O for web requests
+3. **Blocking Task Offloading**: CPU-intensive tasks run in dedicated threads
+4. **Arrow Data Format**: Efficient data interchange
+5. **Static File Embedding**: UI assets are embedded in the binary
+
+Critical database operations are executed in dedicated blocking tasks:
+
+```rust
+tokio::task::spawn_blocking(move || {
+    let rt = tokio::runtime::Handle::current();
+    let result = rt.block_on(async {
+        // Database operations
+    });
+    let _ = tx.send(result);
+});
+```
+
+## Security Considerations
+
+1. **Input Validation**: All user inputs are validated before processing
+2. **Parameterized Queries**: Prevents SQL injection
+3. **File Type Validation**: Only allows approved file formats
+4. **Resource Limits**: Prevents excessive resource usage
+5. **Cross-Origin Protection**: CORS headers restrict access
+
+## Deployment Considerations
+
+### Resource Requirements
+
+Minimum recommended specifications:
+- 4GB RAM
+- 2 CPU cores
+- 1GB free disk space
+
+### Scaling
+
+For larger deployments:
+- Increase `pool_size` in configuration
+- Allocate more memory for DuckDB
+- Consider using a more powerful machine
+
+### Environment Variables
+
+- `DATA_DIR`: Override the data directory location
+- `DEV_MODE`: Enable template hot-reloading (development only)

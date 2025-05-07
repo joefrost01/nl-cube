@@ -43,7 +43,7 @@ No cloud dependency. No setup hell. One binary. Your data, your control.
 - **Rust** for extreme performance and reliability.
 - **DuckDB** for fast, embeddable analytics.
 - **SQLCoder / Rig / ezllama** for local and flexible LLM-driven querying.
-- **Axum + HTMX + Perspective** for the lightweight, powerful UI.
+- **Axum + HTML + JavaScript + Perspective** for the lightweight UI.
 
 ## Philosophy
 
@@ -53,9 +53,4 @@ NL-Cube is designed for engineers, analysts, and builders who want:
 - True local-first analytics.
 - Full control over how their data is queried and presented.
 
-If you can describe it, NL-Cube will help you analyze it.
-
----
-
-> **NL-Cube**: "Your data. Your questions. Your machine."
 

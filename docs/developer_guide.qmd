@@ -1,0 +1,433 @@
+---
+title: "Developer Guide"
+format:
+  html:
+    toc: true
+---
+
+# NL-Cube Developer Guide
+
+This guide provides information for developers who want to contribute to or extend NL-Cube. It covers project setup, code organization, and contribution guidelines.
+
+## Development Environment Setup
+
+### Prerequisites
+
+- **Rust** (1.84.0 or later, 2024 edition)
+- **Git**
+- **DuckDB**
+- **Ollama** (optional, for local LLM testing)
+
+### Setting Up the Development Environment
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/joefrost01/nl-cube.git
+cd nl-cube
+```
+
+2. **Install Rust dependencies**
+
+The project uses Cargo for dependency management. All dependencies are specified in `Cargo.toml`.
+
+3. **Install local LLM (optional)**
+
+For local LLM testing, install Ollama and pull a SQL-focused model:
+
+```bash
+# Install Ollama from https://ollama.ai/download
+ollama pull sqlcoder
+```
+
+4. **Configure the application**
+
+Create a `config.toml` file in the project root:
+
+```toml
+data_dir = "data"
+
+[database]
+connection_string = "nl-cube.db"
+pool_size = 5
+
+[web]
+host = "127.0.0.1"
+port = 3000
+static_dir = "static"
+
+[llm]
+backend = "ollama"
+model = "sqlcoder"
+api_url = "http://localhost:11434/api/generate"
+```
+
+### Building and Running
+
+For development:
+
+```bash
+cargo run
+```
+
+For production build:
+
+```bash
+cargo build --release
+```
+
+### Running Tests
+
+```bash
+cargo test
+```
+
+## Code Organization
+
+NL-Cube is organized into several key modules:
+
+### Project Structure
+
+```
+nl-cube/
+├── src/                 # Rust source code
+│   ├── config.rs        # Configuration management
+│   ├── db/              # Database connection and schema management
+│   ├── ingest/          # File ingestion (CSV, Parquet)
+│   ├── llm/             # Language model integration
+│   ├── util/            # Utility functions
+│   ├── web/             # Web server and API
+│   └── main.rs          # Application entry point
+├── static/              # Frontend assets
+│   ├── css/             # Stylesheets
+│   ├── js/              # JavaScript modules
+│   └── index.html       # Main application page
+├── docs/                # Documentation (Quarto)
+├── templates/           # HTML templates
+├── Cargo.toml           # Rust dependencies
+├── config.toml          # Configuration file
+└── README.md            # Project overview
+```
+
+### Core Modules
+
+#### 1. Configuration (`src/config.rs`)
+
+Handles parsing configuration from files and command-line arguments:
+
+```rust
+pub struct AppConfig {
+    pub database: DatabaseConfig,
+    pub web: WebConfig,
+    pub llm: LlmConfig,
+    pub data_dir: String,
+}
+```
+
+#### 2. Database (`src/db/`)
+
+- **db_pool.rs**: Connection pool management
+- **multi_db_pool.rs**: Multiple database support
+- **schema_manager.rs**: Schema tracking and cache
+
+#### 3. Ingestion (`src/ingest/`)
+
+- **csv.rs**: CSV file processor
+- **parquet.rs**: Parquet file processor
+- **schema.rs**: Schema definition types
+
+#### 4. LLM Integration (`src/llm/`)
+
+- **models.rs**: Data structures for LLM interactions
+- **providers/**: LLM backend implementations
+    - **ollama.rs**: Ollama integration
+    - **remote.rs**: Remote API integration
+
+#### 5. Web Server (`src/web/`)
+
+- **handlers/**: API and UI request handlers
+- **routes.rs**: URL routing
+- **state.rs**: Application state management
+- **static_files.rs**: Static file serving
+- **templates.rs**: Template rendering
+
+### Frontend Structure
+
+- **HTML**: Basic structure in `static/index.html`
+- **CSS**: Styling in `static/css/nlcube.css`
+- **JavaScript**:
+    - **nlcube.js**: Main application logic
+    - **perspective-utils.js**: Visualization handling
+    - **query-utils.js**: Query management
+    - **upload-utils.js**: File upload management
+    - **reports-utils.js**: Saved reports handling
+
+## Key Components
+
+### AppState
+
+The central state container that holds shared resources:
+
+```rust
+pub struct AppState {
+    pub config: AppConfig,
+    pub db_pool: Pool<DuckDBConnectionManager>,
+    pub llm_manager: Arc<Mutex<LlmManager>>,
+    pub data_dir: PathBuf,
+    pub subjects: RwLock<Vec<String>>,
+    pub startup_time: chrono::DateTime<chrono::Utc>,
+    pub current_subject: RwLock<Option<String>>,
+    pub schema_manager: SchemaManager,
+}
+```
+
+### LlmManager
+
+Manages language model interactions through the `SqlGenerator` trait:
+
+```rust
+#[async_trait]
+pub trait SqlGenerator: Send + Sync {
+    async fn generate_sql(&self, question: &str, schema: &str) -> Result<String, LlmError>;
+}
+```
+
+### IngestManager
+
+Handles file ingestion through the `FileIngestor` trait:
+
+```rust
+pub trait FileIngestor: Send + Sync {
+    fn ingest(
+        &self,
+        path: &Path,
+        table_name: &str,
+        subject: &str,
+    ) -> Result<schema::TableSchema, IngestError>;
+}
+```
+
+### Web Server
+
+Built using Axum, the web server provides both API endpoints and UI routes:
+
+```rust
+pub fn ui_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/", get(handlers::ui::index_handler))
+        .route("/static/{*path}", get(static_handler))
+}
+
+pub fn api_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .nest(
+            "/api",
+            Router::new()
+                // Query endpoints
+                .route("/query", post(handlers::api::execute_query))
+                .route("/nl-query", post(sync_nl_query_handler))
+                // ... other routes
+        )
+}
+```
+
+### Schema Management
+
+The `SchemaManager` tracks database schemas for LLM context:
+
+```rust
+pub struct SchemaManager {
+    schema_cache: RwLock<HashMap<String, Vec<String>>>,
+    last_refresh: RwLock<chrono::DateTime<chrono::Utc>>,
+    data_dir: PathBuf,
+}
+```
+
+## Design Patterns
+
+NL-Cube uses several key design patterns:
+
+### 1. Repository Pattern
+
+Database interactions are encapsulated behind traits and managers:
+
+```rust
+pub trait SqlGenerator: Send + Sync {
+    async fn generate_sql(&self, question: &str, schema: &str) -> Result<String, LlmError>;
+}
+```
+
+### 2. Dependency Injection
+
+Components receive their dependencies through constructors:
+
+```rust
+pub fn new_with_multi_db(
+    config: AppConfig,
+    db_pool: Pool<DuckDBConnectionManager>,
+    multi_db_manager: Arc<MultiDbConnectionManager>,
+    llm_manager: LlmManager,
+    data_dir: PathBuf,
+) -> Self { ... }
+```
+
+### 3. Trait-Based Polymorphism
+
+Interfaces are defined as traits, allowing for multiple implementations:
+
+```rust
+pub trait FileIngestor: Send + Sync { ... }
+
+pub struct CsvIngestor { ... }
+pub struct ParquetIngestor { ... }
+```
+
+### 4. Actor Model
+
+Asynchronous tasks with message passing for concurrent operations:
+
+```rust
+let (tx, rx) = oneshot::channel();
+tokio::task::spawn_blocking(move || {
+    // Task execution
+    let _ = tx.send(result);
+});
+// Wait for result
+match rx.await { ... }
+```
+
+## Extension Points
+
+### Adding a New File Ingestor
+
+1. Create a new struct that implements the `FileIngestor` trait
+2. Add the ingestor to `IngestManager`
+3. Update file type detection in the upload handler
+
+Example:
+```rust
+pub struct JsonIngestor { ... }
+
+impl FileIngestor for JsonIngestor {
+    fn ingest(
+        &self,
+        path: &Path,
+        table_name: &str,
+        subject: &str,
+    ) -> Result<TableSchema, IngestError> {
+        // Implementation
+    }
+}
+```
+
+### Adding a New LLM Provider
+
+1. Create a new struct that implements the `SqlGenerator` trait
+2. Add the provider to `LlmManager`
+3. Update the configuration schema
+
+Example:
+```rust
+pub struct CustomLlmProvider { ... }
+
+#[async_trait]
+impl SqlGenerator for CustomLlmProvider {
+    async fn generate_sql(&self, question: &str, schema: &str) -> Result<String, LlmError> {
+        // Implementation
+    }
+}
+```
+
+### Extending the API
+
+1. Add new route definitions in `src/web/routes.rs`
+2. Create handler functions in `src/web/handlers/api.rs`
+3. Update the API documentation
+
+Example:
+```rust
+// In routes.rs
+.route("/api/custom", post(handlers::api::custom_handler))
+
+// In handlers/api.rs
+pub async fn custom_handler(
+    State(app_state): State<Arc<AppState>>,
+    Json(payload): Json<CustomRequest>,
+) -> Result<Json<CustomResponse>, (StatusCode, String)> {
+    // Implementation
+}
+```
+
+## Contributing Guidelines
+
+### Pull Request Process
+
+1. **Fork the repository** and create a feature branch
+2. **Make your changes** with appropriate tests
+3. **Ensure all tests pass** with `cargo test`
+4. **Format your code** with `cargo fmt`
+5. **Check for linting issues** with `cargo clippy`
+6. **Submit a pull request** with a clear description of changes
+
+### Coding Standards
+
+- Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
+- Use `async/await` consistently for asynchronous code
+- Add doc comments to public interfaces
+- Include error handling with custom error types
+- Format code with `rustfmt`
+- Use `clippy` to catch common mistakes
+
+### Documentation
+
+- Update documentation for API changes
+- Add doc comments for public functions
+- Include examples where appropriate
+- Update the changelog for significant changes
+
+### Testing
+
+- Add unit tests for new functionality
+- Include integration tests for API endpoints
+- Test with different configurations
+- Verify performance for data-intensive operations
+
+## Troubleshooting Development Issues
+
+### Common Issues
+
+**Database connection errors:**
+- Check the database file path in configuration
+- Verify DuckDB is installed and the correct version
+- Increase the connection pool size if needed
+
+**LLM integration issues:**
+- Verify Ollama is running (`curl http://localhost:11434/api/version`)
+- Check if the model is available (`ollama list`)
+- Review the prompt template for errors
+
+**Build errors:**
+- Update Rust to the latest version (`rustup update`)
+- Clear cargo cache (`cargo clean`)
+- Check for incompatible dependency versions
+
+## Performance Profiling
+
+For performance issues, use these tools:
+
+- **Tokio Console**: Monitor async tasks
+- **Flamegraph**: Visualize CPU usage
+- **DHAT**: Analyze heap allocations
+
+Example flamegraph generation:
+```bash
+cargo install flamegraph
+CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --bin nl-cube
+```
+
+## Additional Resources
+
+- [Axum Documentation](https://docs.rs/axum/latest/axum/)
+- [Tokio Documentation](https://tokio.rs/tokio/tutorial)
+- [DuckDB Documentation](https://duckdb.org/docs/)
+- [Rust Async Book](https://rust-lang.github.io/async-book/)

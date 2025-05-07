@@ -1,0 +1,194 @@
+---
+title: "Architecture"
+format:
+  html:
+    toc: true
+---
+
+# NL-Cube Architecture
+
+NL-Cube is designed with a modular, clean architecture that prioritizes performance, flexibility, and offline-first operation. This document provides an overview of the system architecture, component interactions, and technical design decisions.
+
+## System Overview
+
+NL-Cube transforms CSV and Parquet files into queryable data using natural language. The system is built around these core components:
+
+1. **Web Server**: An Axum-based web server providing both a REST API and web UI
+2. **Database Layer**: DuckDB embedded database for high-performance analytics
+3. **LLM Integration**: Support for local and remote language models
+4. **File Ingestion**: CSV and Parquet file processors
+5. **Visualization**: FINOS Perspective integration for data exploration
+
+## Architecture Diagram
+
+![NL-Cube_architecture.drawio.svg](images/NL-Cube_architecture.drawio.svg)
+
+## Component Details
+
+### Web Server (Axum)
+
+The web server is built using the Axum framework, a high-performance, async Rust web framework. It provides:
+
+- REST API endpoints for data operations
+- Web interface for user interaction
+- Static file serving
+- Multipart file uploads
+- Server-sent events for long-running operations
+
+The web server is implemented in `src/web/` with these key components:
+
+- **Routes**: Defined in `src/web/routes.rs`, mapping URLs to handlers
+- **Handlers**: API logic in `src/web/handlers/api.rs` and UI in `src/web/handlers/ui.rs`
+- **State**: Application state management in `src/web/state.rs`
+
+### Database Layer (DuckDB)
+
+NL-Cube uses DuckDB as its embedded database engine, chosen for:
+
+- Column-oriented storage for analytical queries
+- Native support for Parquet and CSV files
+- High-performance SQL execution
+- Low memory footprint
+- Zero-configuration deployment
+
+Each subject (data domain) gets its own DuckDB database file for isolation and organization. The database layer includes:
+
+- **Multi-DB Manager**: Manages connections to multiple subject databases
+- **Connection Pool**: Provides efficient connection management
+- **Schema Manager**: Tracks database schemas for LLM context
+
+### LLM Integration
+
+NL-Cube supports multiple LLM backends through a flexible provider architecture:
+
+- **Ollama Integration**: Uses Ollama for local model hosting
+- **Remote API**: Supports cloud-based LLM APIs
+
+The LLM integration translates natural language questions into SQL queries using:
+
+1. Schema extraction from the database
+2. Context-aware prompting
+3. SQL generation
+4. Result validation and execution
+
+### File Ingestion
+
+The ingestion system processes data files into queryable tables:
+
+- **CSV Ingestor**: Handles comma-separated value files
+- **Parquet Ingestor**: Processes Apache Parquet files
+- **Schema Inference**: Automatically detects column types and constraints
+
+### Visualization (FINOS Perspective)
+
+For data exploration, NL-Cube integrates the FINOS Perspective library:
+
+- **Interactive Pivoting**: Slice and dice query results
+- **Multiple Views**: Table, charts, and pivot views
+- **Client-side Filtering**: Further refine results after queries
+- **Export Capabilities**: Save results in various formats
+
+## Data Flow
+
+1. **User uploads CSV/Parquet files** to a subject folder
+2. **Files are processed** by the appropriate ingestor:
+    - Schema is inferred
+    - Data is loaded into DuckDB tables
+    - Metadata is updated
+3. **User submits natural language query**
+4. **LLM converts query to SQL**:
+    - Schema context is provided
+    - SQL query is generated
+    - Query is validated
+5. **Query executes against DuckDB**
+6. **Results are returned** as Arrow data
+7. **Perspective visualizes** the results
+
+## Design Decisions
+
+### Why Rust?
+
+Rust was chosen for NL-Cube because it offers:
+
+- Memory safety without garbage collection
+- High performance for data processing
+- Excellent concurrency model
+- Strong type system to prevent bugs
+- Good ecosystem of libraries
+
+### Why DuckDB?
+
+DuckDB provides:
+
+- Column-oriented storage for analytics
+- Embeddable database without separate server
+- Native vectorized execution
+- High-performance for analytical queries
+- Direct support for CSV and Parquet
+
+### Why Axum?
+
+Axum was chosen because:
+
+- Built on top of Tokio for async I/O
+- Tower middleware ecosystem
+- Type-safe routing
+- Modern, ergonomic API
+- Excellent performance
+
+### Why FINOS Perspective?
+
+Perspective provides:
+
+- High-performance WebAssembly-based visualization
+- Interactive data exploration
+- Multiple visualization types
+- Seamless integration with Arrow data format
+
+## Performance Considerations
+
+NL-Cube is designed for performance with:
+
+- **Async Processing**: Non-blocking I/O throughout the stack
+- **Connection Pooling**: Efficient database connection management
+- **Arrow Data Format**: Zero-copy data interchange
+- **Multi-threading**: Parallel processing where appropriate
+- **Static File Embedding**: Fast access to UI resources
+
+## Security Model
+
+- **Isolation**: Each subject has its own database file
+- **Input Validation**: All user inputs are validated
+- **Parameterized Queries**: SQL injection prevention
+- **File Type Validation**: Only approved file formats are accepted
+
+## Deployment Options
+
+NL-Cube can be deployed in various ways:
+
+- **Standalone Binary**: Single-file distribution
+- **Docker Container**: Isolated, reproducible environment
+- **Desktop Application**: Using web technologies in a desktop wrapper
+
+## Future Architecture Directions
+
+Planned architectural enhancements include:
+
+- **Data Sources**: Use DuckDB imports for additional data sources
+- **Additional LLMs**: Allow user to provision different LLMs via Rig
+
+## Code Organization
+
+The codebase is organized into these main directories:
+
+- **src/**: Rust source code
+    - **config.rs**: Configuration management
+    - **db/**: Database connection and schema management
+    - **ingest/**: File ingestion (CSV, Parquet)
+    - **llm/**: Language model integration
+    - **web/**: Web server and API
+- **static/**: Frontend assets
+    - **js/**: JavaScript modules
+    - **css/**: Styling
+    - **index.html**: Main application page
+- **docs/**: Documentation sources
