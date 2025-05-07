@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>NL-Cube</title>
+<title>Roadmap – NL-Cube</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,6 +19,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -279,7 +314,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./index.html">Introduction</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./roadmap.html">Roadmap</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -293,7 +328,7 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link active">
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Introduction</span></a>
   </div>
 </li>
@@ -323,7 +358,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./roadmap.html" class="sidebar-item-text sidebar-link">
+  <a href="./roadmap.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Roadmap</span></a>
   </div>
 </li>
@@ -337,74 +372,423 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#nl-cube" id="toc-nl-cube" class="nav-link active" data-scroll-target="#nl-cube">NL-Cube</a>
+  <li><a href="#nl-cube-roadmap" id="toc-nl-cube-roadmap" class="nav-link active" data-scroll-target="#nl-cube-roadmap">NL-Cube Roadmap</a>
   <ul class="collapse">
-  <li><a href="#highlights" id="toc-highlights" class="nav-link" data-scroll-target="#highlights">Highlights</a></li>
-  <li><a href="#how-it-works" id="toc-how-it-works" class="nav-link" data-scroll-target="#how-it-works">How It Works</a></li>
-  <li><a href="#key-technologies" id="toc-key-technologies" class="nav-link" data-scroll-target="#key-technologies">Key Technologies</a></li>
-  <li><a href="#philosophy" id="toc-philosophy" class="nav-link" data-scroll-target="#philosophy">Philosophy</a></li>
+  <li><a href="#data-import-enhancements" id="toc-data-import-enhancements" class="nav-link" data-scroll-target="#data-import-enhancements">Data Import Enhancements</a>
+  <ul class="collapse">
+  <li><a href="#additional-import-formats" id="toc-additional-import-formats" class="nav-link" data-scroll-target="#additional-import-formats">Additional Import Formats</a></li>
+  <li><a href="#enhanced-schema-inference" id="toc-enhanced-schema-inference" class="nav-link" data-scroll-target="#enhanced-schema-inference">Enhanced Schema Inference</a></li>
+  </ul></li>
+  <li><a href="#expanded-llm-support" id="toc-expanded-llm-support" class="nav-link" data-scroll-target="#expanded-llm-support">Expanded LLM Support</a>
+  <ul class="collapse">
+  <li><a href="#configurable-llm-integration-via-rig" id="toc-configurable-llm-integration-via-rig" class="nav-link" data-scroll-target="#configurable-llm-integration-via-rig">Configurable LLM Integration via Rig</a></li>
+  <li><a href="#prompt-template-customization" id="toc-prompt-template-customization" class="nav-link" data-scroll-target="#prompt-template-customization">Prompt Template Customization</a></li>
+  </ul></li>
+  <li><a href="#report-management" id="toc-report-management" class="nav-link" data-scroll-target="#report-management">Report Management</a>
+  <ul class="collapse">
+  <li><a href="#report-generation-and-saving" id="toc-report-generation-and-saving" class="nav-link" data-scroll-target="#report-generation-and-saving">Report Generation and Saving</a></li>
+  <li><a href="#visualization-library" id="toc-visualization-library" class="nav-link" data-scroll-target="#visualization-library">Visualization Library</a></li>
+  </ul></li>
+  <li><a href="#advanced-data-modeling" id="toc-advanced-data-modeling" class="nav-link" data-scroll-target="#advanced-data-modeling">Advanced Data Modeling</a>
+  <ul class="collapse">
+  <li><a href="#table-relationship-definition" id="toc-table-relationship-definition" class="nav-link" data-scroll-target="#table-relationship-definition">Table Relationship Definition</a></li>
+  <li><a href="#schema-management" id="toc-schema-management" class="nav-link" data-scroll-target="#schema-management">Schema Management</a></li>
+  </ul></li>
+  <li><a href="#real-time-data-processing" id="toc-real-time-data-processing" class="nav-link" data-scroll-target="#real-time-data-processing">Real-Time Data Processing</a>
+  <ul class="collapse">
+  <li><a href="#hot-watch-folder" id="toc-hot-watch-folder" class="nav-link" data-scroll-target="#hot-watch-folder">Hot Watch Folder</a></li>
+  <li><a href="#streaming-data-support" id="toc-streaming-data-support" class="nav-link" data-scroll-target="#streaming-data-support">Streaming Data Support</a></li>
+  <li><a href="#aggregation-engine" id="toc-aggregation-engine" class="nav-link" data-scroll-target="#aggregation-engine">Aggregation Engine</a></li>
+  </ul></li>
+  <li><a href="#security-and-multi-user-support" id="toc-security-and-multi-user-support" class="nav-link" data-scroll-target="#security-and-multi-user-support">Security and Multi-User Support</a>
+  <ul class="collapse">
+  <li><a href="#oauth-integration" id="toc-oauth-integration" class="nav-link" data-scroll-target="#oauth-integration">OAuth Integration</a></li>
+  <li><a href="#multi-user-mode" id="toc-multi-user-mode" class="nav-link" data-scroll-target="#multi-user-mode">Multi-User Mode</a></li>
+  </ul></li>
+  <li><a href="#local-llm-integration" id="toc-local-llm-integration" class="nav-link" data-scroll-target="#local-llm-integration">Local LLM Integration</a>
+  <ul class="collapse">
+  <li><a href="#bundled-llm-support" id="toc-bundled-llm-support" class="nav-link" data-scroll-target="#bundled-llm-support">Bundled LLM Support</a></li>
+  <li><a href="#pre-loaded-datasets" id="toc-pre-loaded-datasets" class="nav-link" data-scroll-target="#pre-loaded-datasets">Pre-Loaded Datasets</a></li>
+  </ul></li>
+  <li><a href="#user-experience-improvements" id="toc-user-experience-improvements" class="nav-link" data-scroll-target="#user-experience-improvements">User Experience Improvements</a>
+  <ul class="collapse">
+  <li><a href="#nl-query-auto-complete" id="toc-nl-query-auto-complete" class="nav-link" data-scroll-target="#nl-query-auto-complete">NL Query Auto-Complete</a></li>
+  <li><a href="#progressive-web-app" id="toc-progressive-web-app" class="nav-link" data-scroll-target="#progressive-web-app">Progressive Web App</a></li>
+  <li><a href="#keyboard-shortcuts-and-power-user-features" id="toc-keyboard-shortcuts-and-power-user-features" class="nav-link" data-scroll-target="#keyboard-shortcuts-and-power-user-features">Keyboard Shortcuts and Power User Features</a></li>
+  </ul></li>
+  <li><a href="#enterprise-features" id="toc-enterprise-features" class="nav-link" data-scroll-target="#enterprise-features">Enterprise Features</a>
+  <ul class="collapse">
+  <li><a href="#advanced-administration" id="toc-advanced-administration" class="nav-link" data-scroll-target="#advanced-administration">Advanced Administration</a></li>
+  <li><a href="#integration-ecosystem" id="toc-integration-ecosystem" class="nav-link" data-scroll-target="#integration-ecosystem">Integration Ecosystem</a></li>
+  </ul></li>
+  <li><a href="#development-milestones" id="toc-development-milestones" class="nav-link" data-scroll-target="#development-milestones">Development Milestones</a>
+  <ul class="collapse">
+  <li><a href="#short-term-3-6-months" id="toc-short-term-3-6-months" class="nav-link" data-scroll-target="#short-term-3-6-months">Short-Term (3-6 months)</a></li>
+  <li><a href="#medium-term-6-12-months" id="toc-medium-term-6-12-months" class="nav-link" data-scroll-target="#medium-term-6-12-months">Medium-Term (6-12 months)</a></li>
+  <li><a href="#long-term-12-months" id="toc-long-term-12-months" class="nav-link" data-scroll-target="#long-term-12-months">Long-Term (12+ months)</a></li>
+  </ul></li>
+  <li><a href="#feedback-and-prioritization" id="toc-feedback-and-prioritization" class="nav-link" data-scroll-target="#feedback-and-prioritization">Feedback and Prioritization</a></li>
   </ul></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Roadmap</h1>
+</div>
 
 
 
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
 
 
-<section id="nl-cube" class="level1">
-<h1>NL-Cube</h1>
-<p><strong>NL-Cube</strong> is an <strong>offline-first, natural language analytics engine</strong> that transforms CSV and Parquet files into lightning-fast, pivotable data cubes powered by <strong>DuckDB</strong> — with full <strong>natural language querying</strong> built-in.</p>
-<p>No cloud dependency. No setup hell. One binary. Your data, your control.</p>
-<section id="highlights" class="level2">
-<h2 class="anchored" data-anchor-id="highlights">Highlights</h2>
+</header>
+
+
+<section id="nl-cube-roadmap" class="level1">
+<h1>NL-Cube Roadmap</h1>
+<p>This document outlines the planned future development of NL-Cube. The roadmap is organized into short-term, medium-term, and long-term goals to provide a clear vision of where the project is headed.</p>
+<section id="data-import-enhancements" class="level2">
+<h2 class="anchored" data-anchor-id="data-import-enhancements">Data Import Enhancements</h2>
+<section id="additional-import-formats" class="level3">
+<h3 class="anchored" data-anchor-id="additional-import-formats">Additional Import Formats</h3>
+<p>Expand NL-Cube’s data ingestion capabilities to support all formats that DuckDB can handle:</p>
 <ul>
-<li><p><strong>Natural Language Querying</strong><br>
-Ask real questions (“Top 5 regions by revenue in 2025”) and get instant answers.</p></li>
-<li><p><strong>Flexible Data Ingestion</strong><br>
-Drop CSV or Parquet files into folders to populate your own subject areas.</p></li>
-<li><p><strong>Lightning-Fast Execution</strong><br>
-Queries are translated into optimized DuckDB SQL and executed instantly.</p></li>
-<li><p><strong>Embedded UI</strong><br>
-Analyze, pivot, and visualize your data using an integrated <strong>FINOS Perspective</strong> front-end.</p></li>
-<li><p><strong>Offline, Secure, Private</strong><br>
-Runs entirely on your laptop or server. No mandatory cloud APIs. Full local control.</p></li>
-<li><p><strong>Model Flexibility</strong><br>
-Supports multiple LLM backends (local LLMs like SQLCoder via ezllama, or cloud models via Rig).</p></li>
+<li><strong>JSON Files</strong>: Support for structured JSON data files</li>
+<li><strong>Excel Files</strong>: Direct import of XLSX/XLS spreadsheets</li>
+<li><strong>ORC Files</strong>: Support for Optimized Row Columnar format</li>
+<li><strong>Avro Files</strong>: Support for Apache Avro format</li>
+<li><strong>XML Files</strong>: Structured XML document ingestion</li>
+<li><strong>HTTP/REST Sources</strong>: Direct import from REST APIs</li>
+<li><strong>Database Connections</strong>: Import from other databases</li>
+</ul>
+<p>Implementation will leverage DuckDB’s built-in capabilities:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Example of how DuckDB handles different formats</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> json_table <span class="kw">AS</span> <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> read_json(<span class="st">'data.json'</span>, auto_detect<span class="op">=</span><span class="kw">true</span>);</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> excel_table <span class="kw">AS</span> <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> read_excel(<span class="st">'data.xlsx'</span>);</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> orc_table <span class="kw">AS</span> <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> read_orc(<span class="st">'data.orc'</span>);</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="enhanced-schema-inference" class="level3">
+<h3 class="anchored" data-anchor-id="enhanced-schema-inference">Enhanced Schema Inference</h3>
+<ul>
+<li>Improved type detection for edge cases</li>
+<li>Better handling of date/time formats</li>
+<li>Detection of primary and foreign keys</li>
+<li>Smart detection of hierarchical data</li>
+<li>Preservation of original metadata</li>
 </ul>
 </section>
-<section id="how-it-works" class="level2">
-<h2 class="anchored" data-anchor-id="how-it-works">How It Works</h2>
+</section>
+<section id="expanded-llm-support" class="level2">
+<h2 class="anchored" data-anchor-id="expanded-llm-support">Expanded LLM Support</h2>
+<section id="configurable-llm-integration-via-rig" class="level3">
+<h3 class="anchored" data-anchor-id="configurable-llm-integration-via-rig">Configurable LLM Integration via Rig</h3>
+<ul>
+<li>Integration with Rig crate for LLM orchestration</li>
+<li>User-selectable models through configuration</li>
+<li>Dynamically switchable LLM providers</li>
+<li>Model version tracking and compatibility checks</li>
+<li>Performance benchmarking across models</li>
+</ul>
+<p>Configuration example:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[llm]</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="dt">backend</span> <span class="op">=</span> <span class="st">"rig"</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">api_url</span> <span class="op">=</span> <span class="st">"https://api.rig.dev"</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="dt">api_key</span> <span class="op">=</span> <span class="st">"${RIG_API_KEY}"</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Multiple models can be configured</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">[[llm.models]]</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span> <span class="op">=</span> <span class="st">"sqlcoder-34b"</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="dt">provider</span> <span class="op">=</span> <span class="st">"databricks"</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="dt">model_id</span> <span class="op">=</span> <span class="st">"databricks/dbrx-instruct"</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="kw">[[llm.models]]</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span> <span class="op">=</span> <span class="st">"arctic-sqler"</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="dt">provider</span> <span class="op">=</span> <span class="st">"anthropic"</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="dt">model_id</span> <span class="op">=</span> <span class="st">"claude-3-opus-20240229"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="prompt-template-customization" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-template-customization">Prompt Template Customization</h3>
+<ul>
+<li>User-editable prompt templates</li>
+<li>Domain-specific prompt optimization</li>
+<li>Few-shot learning examples for specialized domains</li>
+<li>Prompt versioning and A/B testing</li>
+</ul>
+</section>
+</section>
+<section id="report-management" class="level2">
+<h2 class="anchored" data-anchor-id="report-management">Report Management</h2>
+<section id="report-generation-and-saving" class="level3">
+<h3 class="anchored" data-anchor-id="report-generation-and-saving">Report Generation and Saving</h3>
+<ul>
+<li><strong>Template-Based Reports</strong>: Customizable report templates</li>
+<li><strong>Scheduled Reports</strong>: Automated report generation</li>
+<li><strong>Export Formats</strong>: PDF, Excel, HTML, and Markdown</li>
+<li><strong>Collaboration</strong>: Sharing and commenting on reports</li>
+<li><strong>Versioning</strong>: Track changes to reports over time</li>
+</ul>
+</section>
+<section id="visualization-library" class="level3">
+<h3 class="anchored" data-anchor-id="visualization-library">Visualization Library</h3>
+<ul>
+<li>Expanded chart types and visualizations</li>
+<li>Custom visualization themes</li>
+<li>Interactive dashboards</li>
+<li>Embeddable report widgets</li>
+<li>Annotation and markup tools</li>
+</ul>
+</section>
+</section>
+<section id="advanced-data-modeling" class="level2">
+<h2 class="anchored" data-anchor-id="advanced-data-modeling">Advanced Data Modeling</h2>
+<section id="table-relationship-definition" class="level3">
+<h3 class="anchored" data-anchor-id="table-relationship-definition">Table Relationship Definition</h3>
+<ul>
+<li>GUI for defining relationships between tables</li>
+<li>Automatic foreign key detection</li>
+<li>Entity-relationship diagram generation</li>
+<li>Join path recommendations for queries</li>
+<li>Referential integrity enforcement</li>
+</ul>
+<p>Example relationship definition:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"relationships"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"from"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">"table"</span><span class="fu">:</span> <span class="st">"orders"</span><span class="fu">,</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        <span class="dt">"column"</span><span class="fu">:</span> <span class="st">"customer_id"</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>      <span class="fu">},</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"to"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        <span class="dt">"table"</span><span class="fu">:</span> <span class="st">"customers"</span><span class="fu">,</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>        <span class="dt">"column"</span><span class="fu">:</span> <span class="st">"id"</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>      <span class="fu">},</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"type"</span><span class="fu">:</span> <span class="st">"many-to-one"</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="schema-management" class="level3">
+<h3 class="anchored" data-anchor-id="schema-management">Schema Management</h3>
+<ul>
+<li>Allow addition of data to existing tables</li>
+<li>Schema evolution and migration</li>
+<li>Column-level metadata and descriptions</li>
+<li>Data quality constraints</li>
+<li>Schema versioning</li>
+</ul>
+</section>
+</section>
+<section id="real-time-data-processing" class="level2">
+<h2 class="anchored" data-anchor-id="real-time-data-processing">Real-Time Data Processing</h2>
+<section id="hot-watch-folder" class="level3">
+<h3 class="anchored" data-anchor-id="hot-watch-folder">Hot Watch Folder</h3>
+<ul>
+<li>Automated ingestion of files from watched directories</li>
+<li>Configurable processing rules based on file patterns</li>
+<li>Error handling and notification for problematic files</li>
+<li>Throttling and batching for high-volume scenarios</li>
+<li>Processing history and audit logs</li>
+</ul>
+<p>Configuration example:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[[watch_folders]]</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="dt">path</span> <span class="op">=</span> <span class="st">"data/incoming/sales"</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="dt">subject</span> <span class="op">=</span> <span class="st">"sales"</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="dt">pattern</span> <span class="op">=</span> <span class="st">"*.csv"</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="dt">table_prefix</span> <span class="op">=</span> <span class="st">"sales_"</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="dt">poll_interval_seconds</span> <span class="op">=</span> <span class="dv">30</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="streaming-data-support" class="level3">
+<h3 class="anchored" data-anchor-id="streaming-data-support">Streaming Data Support</h3>
+<ul>
+<li>Integration with Apache Kafka and other streaming platforms</li>
+<li>Real-time data processing pipelines</li>
+<li>Windowed aggregations on streaming data</li>
+<li>Configurable stream processors</li>
+<li>Stream-to-table materialization</li>
+</ul>
+<p>Example Kafka configuration:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[[streaming.sources]]</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dt">type</span> <span class="op">=</span> <span class="st">"kafka"</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="dt">bootstrap_servers</span> <span class="op">=</span> <span class="st">"kafka1:9092,kafka2:9092"</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="dt">topic</span> <span class="op">=</span> <span class="st">"sales_data"</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="dt">group_id</span> <span class="op">=</span> <span class="st">"nl-cube-consumer"</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="dt">subject</span> <span class="op">=</span> <span class="st">"sales"</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="dt">table</span> <span class="op">=</span> <span class="st">"real_time_sales"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="aggregation-engine" class="level3">
+<h3 class="anchored" data-anchor-id="aggregation-engine">Aggregation Engine</h3>
+<ul>
+<li>User-defined aggregate definitions</li>
+<li>Incremental aggregation updates</li>
+<li>Time-based and event-based windows</li>
+<li>Direct Perspective integration for live updates</li>
+<li>Materialized view management</li>
+</ul>
+</section>
+</section>
+<section id="security-and-multi-user-support" class="level2">
+<h2 class="anchored" data-anchor-id="security-and-multi-user-support">Security and Multi-User Support</h2>
+<section id="oauth-integration" class="level3">
+<h3 class="anchored" data-anchor-id="oauth-integration">OAuth Integration</h3>
+<ul>
+<li>Support for OAuth 2.0 authentication flows</li>
+<li>Integration with identity providers (Google, GitHub, Microsoft)</li>
+<li>JWT token handling</li>
+<li>Role-based authorization</li>
+<li>API key management for programmatic access</li>
+</ul>
+</section>
+<section id="multi-user-mode" class="level3">
+<h3 class="anchored" data-anchor-id="multi-user-mode">Multi-User Mode</h3>
+<ul>
+<li>User account management</li>
+<li>Personalized settings and preferences</li>
+<li>Resource quotas and usage tracking</li>
+<li>Activity logging and audit trails</li>
+<li>Access control for subjects and reports</li>
+</ul>
+</section>
+</section>
+<section id="local-llm-integration" class="level2">
+<h2 class="anchored" data-anchor-id="local-llm-integration">Local LLM Integration</h2>
+<section id="bundled-llm-support" class="level3">
+<h3 class="anchored" data-anchor-id="bundled-llm-support">Bundled LLM Support</h3>
+<ul>
+<li>Option to bundle lightweight local LLMs</li>
+<li>Optimized models for SQL generation</li>
+<li>No internet dependency for core functionality</li>
+<li>Fine-tuning tools for domain-specific datasets</li>
+<li>Model switchover between local and remote as needed</li>
+</ul>
+</section>
+<section id="pre-loaded-datasets" class="level3">
+<h3 class="anchored" data-anchor-id="pre-loaded-datasets">Pre-Loaded Datasets</h3>
+<ul>
+<li>Domain-specific sample datasets</li>
+<li>Example queries and reports</li>
+<li>Guided tutorials using sample data</li>
+<li>Benchmarking datasets</li>
+<li>Easy data reset and refresh</li>
+</ul>
+</section>
+</section>
+<section id="user-experience-improvements" class="level2">
+<h2 class="anchored" data-anchor-id="user-experience-improvements">User Experience Improvements</h2>
+<section id="nl-query-auto-complete" class="level3">
+<h3 class="anchored" data-anchor-id="nl-query-auto-complete">NL Query Auto-Complete</h3>
+<ul>
+<li>Intelligent suggestions as you type</li>
+<li>Auto-completion for column names and values</li>
+<li>Query history integration</li>
+<li>Context-aware suggestions based on schema</li>
+<li>Semantic understanding of partial queries</li>
+</ul>
+</section>
+<section id="progressive-web-app" class="level3">
+<h3 class="anchored" data-anchor-id="progressive-web-app">Progressive Web App</h3>
+<ul>
+<li>Offline capability</li>
+<li>Mobile-friendly responsive design</li>
+<li>Native app-like experience</li>
+<li>Push notifications</li>
+<li>Background synchronization</li>
+</ul>
+</section>
+<section id="keyboard-shortcuts-and-power-user-features" class="level3">
+<h3 class="anchored" data-anchor-id="keyboard-shortcuts-and-power-user-features">Keyboard Shortcuts and Power User Features</h3>
+<ul>
+<li>Comprehensive keyboard navigation</li>
+<li>Customizable keyboard shortcuts</li>
+<li>Command palette for quick actions</li>
+<li>Batch operations</li>
+<li>Query scripting capabilities</li>
+</ul>
+</section>
+</section>
+<section id="enterprise-features" class="level2">
+<h2 class="anchored" data-anchor-id="enterprise-features">Enterprise Features</h2>
+<section id="advanced-administration" class="level3">
+<h3 class="anchored" data-anchor-id="advanced-administration">Advanced Administration</h3>
+<ul>
+<li>Centralized deployment management</li>
+<li>Usage analytics and monitoring</li>
+<li>Backup and disaster recovery</li>
+<li>Resource governance</li>
+<li>Health checks and diagnostics</li>
+</ul>
+</section>
+<section id="integration-ecosystem" class="level3">
+<h3 class="anchored" data-anchor-id="integration-ecosystem">Integration Ecosystem</h3>
+<ul>
+<li>API for third-party integration</li>
+<li>Plugin architecture</li>
+<li>Webhooks for event-driven workflows</li>
+<li>SSO integration</li>
+<li>Enterprise data catalog integration</li>
+</ul>
+</section>
+</section>
+<section id="development-milestones" class="level2">
+<h2 class="anchored" data-anchor-id="development-milestones">Development Milestones</h2>
+<section id="short-term-3-6-months" class="level3">
+<h3 class="anchored" data-anchor-id="short-term-3-6-months">Short-Term (3-6 months)</h3>
+<ul>
+<li><strong>Additional file formats</strong>: JSON, Excel</li>
+<li><strong>Report saving and management</strong></li>
+<li><strong>Basic relationship definition</strong></li>
+<li><strong>Data append to existing tables</strong></li>
+<li><strong>Auto-complete for column names</strong></li>
+</ul>
+</section>
+<section id="medium-term-6-12-months" class="level3">
+<h3 class="anchored" data-anchor-id="medium-term-6-12-months">Medium-Term (6-12 months)</h3>
+<ul>
+<li><strong>Hot watch folder for auto-ingestion</strong></li>
+<li><strong>Streaming data support (Kafka)</strong></li>
+<li><strong>User-defined aggregates</strong></li>
+<li><strong>OAuth security integration</strong></li>
+<li><strong>Local LLM bundling options</strong></li>
+</ul>
+</section>
+<section id="long-term-12-months" class="level3">
+<h3 class="anchored" data-anchor-id="long-term-12-months">Long-Term (12+ months)</h3>
+<ul>
+<li><strong>Full multi-user mode</strong></li>
+<li><strong>Enterprise administration</strong></li>
+<li><strong>Advanced streaming analytics</strong></li>
+<li><strong>Comprehensive plugin system</strong></li>
+<li><strong>AI-assisted data modeling</strong></li>
+</ul>
+</section>
+</section>
+<section id="feedback-and-prioritization" class="level2">
+<h2 class="anchored" data-anchor-id="feedback-and-prioritization">Feedback and Prioritization</h2>
+<p>The NL-Cube roadmap is guided by user feedback and community needs. We welcome contributions and suggestions through:</p>
+<ul>
+<li>GitHub issues and discussions</li>
+<li>Community forums</li>
+<li>User feedback surveys</li>
+<li>Usage analytics</li>
+</ul>
+<p>Priority will be given to features that:</p>
 <ol type="1">
-<li><p><strong>Create Subjects</strong><br>
-Organize your datasets into logical folders called “Subjects”.</p></li>
-<li><p><strong>Drop Data</strong><br>
-Add CSV or Parquet files. NL-Cube ingests them automatically.</p></li>
-<li><p><strong>Ask Questions</strong><br>
-Query your data in natural language. NL-Cube translates your question into SQL.</p></li>
-<li><p><strong>Explore Results</strong><br>
-Use the embedded Perspective UI to slice, dice, and visualize your answers.</p></li>
+<li>Improve core natural language query capabilities</li>
+<li>Enhance user experience for non-technical users</li>
+<li>Expand data connectivity options</li>
+<li>Simplify deployment and administration</li>
 </ol>
-</section>
-<section id="key-technologies" class="level2">
-<h2 class="anchored" data-anchor-id="key-technologies">Key Technologies</h2>
-<ul>
-<li><strong>Rust</strong> for extreme performance and reliability.</li>
-<li><strong>DuckDB</strong> for fast, embeddable analytics.</li>
-<li><strong>SQLCoder / Rig / ezllama</strong> for local and flexible LLM-driven querying.</li>
-<li><strong>Axum + HTML + JavaScript + Perspective</strong> for the lightweight UI.</li>
-</ul>
-</section>
-<section id="philosophy" class="level2">
-<h2 class="anchored" data-anchor-id="philosophy">Philosophy</h2>
-<p>NL-Cube is designed for engineers, analysts, and builders who want:</p>
-<ul>
-<li>Zero cloud lock-in.</li>
-<li>True local-first analytics.</li>
-<li>Full control over how their data is queried and presented.</li>
-</ul>
+<p>To contribute to the roadmap or provide feedback, please open an issue on the <a href="https://github.com/joefrost01/nl-cube">GitHub repository</a>.</p>
 
 
 </section>

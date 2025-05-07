@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>NL-Cube</title>
+<title>User Guide – NL-Cube</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,6 +19,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -279,7 +314,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./index.html">Introduction</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./user_guide.html">User Guide</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -293,7 +328,7 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link active">
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Introduction</span></a>
   </div>
 </li>
@@ -305,7 +340,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./user_guide.html" class="sidebar-item-text sidebar-link">
+  <a href="./user_guide.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">User Guide</span></a>
   </div>
 </li>
@@ -337,76 +372,271 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#nl-cube" id="toc-nl-cube" class="nav-link active" data-scroll-target="#nl-cube">NL-Cube</a>
+  <li><a href="#nl-cube-user-guide" id="toc-nl-cube-user-guide" class="nav-link active" data-scroll-target="#nl-cube-user-guide">NL-Cube User Guide</a>
   <ul class="collapse">
-  <li><a href="#highlights" id="toc-highlights" class="nav-link" data-scroll-target="#highlights">Highlights</a></li>
-  <li><a href="#how-it-works" id="toc-how-it-works" class="nav-link" data-scroll-target="#how-it-works">How It Works</a></li>
-  <li><a href="#key-technologies" id="toc-key-technologies" class="nav-link" data-scroll-target="#key-technologies">Key Technologies</a></li>
-  <li><a href="#philosophy" id="toc-philosophy" class="nav-link" data-scroll-target="#philosophy">Philosophy</a></li>
+  <li><a href="#installation" id="toc-installation" class="nav-link" data-scroll-target="#installation">Installation</a>
+  <ul class="collapse">
+  <li><a href="#download-binary" id="toc-download-binary" class="nav-link" data-scroll-target="#download-binary">Download Binary</a></li>
+  <li><a href="#configuration" id="toc-configuration" class="nav-link" data-scroll-target="#configuration">Configuration</a></li>
+  <li><a href="#requirements" id="toc-requirements" class="nav-link" data-scroll-target="#requirements">Requirements</a></li>
+  </ul></li>
+  <li><a href="#getting-started" id="toc-getting-started" class="nav-link" data-scroll-target="#getting-started">Getting Started</a>
+  <ul class="collapse">
+  <li><a href="#running-nl-cube" id="toc-running-nl-cube" class="nav-link" data-scroll-target="#running-nl-cube">Running NL-Cube</a></li>
+  <li><a href="#creating-your-first-database" id="toc-creating-your-first-database" class="nav-link" data-scroll-target="#creating-your-first-database">Creating Your First Database</a></li>
+  <li><a href="#uploading-data-files" id="toc-uploading-data-files" class="nav-link" data-scroll-target="#uploading-data-files">Uploading Data Files</a></li>
+  <li><a href="#your-first-natural-language-query" id="toc-your-first-natural-language-query" class="nav-link" data-scroll-target="#your-first-natural-language-query">Your First Natural Language Query</a></li>
+  </ul></li>
+  <li><a href="#key-features" id="toc-key-features" class="nav-link" data-scroll-target="#key-features">Key Features</a>
+  <ul class="collapse">
+  <li><a href="#natural-language-querying" id="toc-natural-language-querying" class="nav-link" data-scroll-target="#natural-language-querying">Natural Language Querying</a></li>
+  <li><a href="#data-visualization" id="toc-data-visualization" class="nav-link" data-scroll-target="#data-visualization">Data Visualization</a></li>
+  <li><a href="#working-with-multiple-databases" id="toc-working-with-multiple-databases" class="nav-link" data-scroll-target="#working-with-multiple-databases">Working with Multiple Databases</a></li>
+  </ul></li>
+  <li><a href="#advanced-usage" id="toc-advanced-usage" class="nav-link" data-scroll-target="#advanced-usage">Advanced Usage</a>
+  <ul class="collapse">
+  <li><a href="#saving-reports-todo" id="toc-saving-reports-todo" class="nav-link" data-scroll-target="#saving-reports-todo">Saving Reports (Todo)</a></li>
+  <li><a href="#query-history" id="toc-query-history" class="nav-link" data-scroll-target="#query-history">Query History</a></li>
+  <li><a href="#sql-preview" id="toc-sql-preview" class="nav-link" data-scroll-target="#sql-preview">SQL Preview</a></li>
+  </ul></li>
+  <li><a href="#troubleshooting" id="toc-troubleshooting" class="nav-link" data-scroll-target="#troubleshooting">Troubleshooting</a>
+  <ul class="collapse">
+  <li><a href="#common-issues" id="toc-common-issues" class="nav-link" data-scroll-target="#common-issues">Common Issues</a></li>
+  <li><a href="#getting-help" id="toc-getting-help" class="nav-link" data-scroll-target="#getting-help">Getting Help</a></li>
+  </ul></li>
   </ul></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">User Guide</h1>
+</div>
 
 
 
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
 
 
-<section id="nl-cube" class="level1">
-<h1>NL-Cube</h1>
-<p><strong>NL-Cube</strong> is an <strong>offline-first, natural language analytics engine</strong> that transforms CSV and Parquet files into lightning-fast, pivotable data cubes powered by <strong>DuckDB</strong> — with full <strong>natural language querying</strong> built-in.</p>
-<p>No cloud dependency. No setup hell. One binary. Your data, your control.</p>
-<section id="highlights" class="level2">
-<h2 class="anchored" data-anchor-id="highlights">Highlights</h2>
+</header>
+
+
+<section id="nl-cube-user-guide" class="level1">
+<h1>NL-Cube User Guide</h1>
+<p>This guide will help you get started with NL-Cube, from installation to running complex natural language queries against your data.</p>
+<section id="installation" class="level2">
+<h2 class="anchored" data-anchor-id="installation">Installation</h2>
+<section id="download-binary" class="level3">
+<h3 class="anchored" data-anchor-id="download-binary">Download Binary</h3>
+<p>Download the latest binary for your platform:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Example for Linux</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-L</span> https://github.com/joefrost01/nl-cube/releases/latest/download/nl-cube-linux-x86_64 <span class="at">-o</span> nl-cube</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> +x nl-cube</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="configuration" class="level3">
+<h3 class="anchored" data-anchor-id="configuration">Configuration</h3>
+<p>Create a <code>config.toml</code> file in the same directory as the binary:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">data_dir</span> <span class="op">=</span> <span class="st">"data"</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">[database]</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="dt">connection_string</span> <span class="op">=</span> <span class="st">"nl-cube.db"</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="dt">pool_size</span> <span class="op">=</span> <span class="dv">5</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">[web]</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="dt">host</span> <span class="op">=</span> <span class="st">"127.0.0.1"</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="dt">port</span> <span class="op">=</span> <span class="dv">3000</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="dt">static_dir</span> <span class="op">=</span> <span class="st">"static"</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="kw">[llm]</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="dt">backend</span> <span class="op">=</span> <span class="st">"ollama"</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="dt">model</span> <span class="op">=</span> <span class="st">"sqlcoder"</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="dt">api_url</span> <span class="op">=</span> <span class="st">"http://localhost:11434/api/generate"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="requirements" class="level3">
+<h3 class="anchored" data-anchor-id="requirements">Requirements</h3>
 <ul>
-<li><p><strong>Natural Language Querying</strong><br>
-Ask real questions (“Top 5 regions by revenue in 2025”) and get instant answers.</p></li>
-<li><p><strong>Flexible Data Ingestion</strong><br>
-Drop CSV or Parquet files into folders to populate your own subject areas.</p></li>
-<li><p><strong>Lightning-Fast Execution</strong><br>
-Queries are translated into optimized DuckDB SQL and executed instantly.</p></li>
-<li><p><strong>Embedded UI</strong><br>
-Analyze, pivot, and visualize your data using an integrated <strong>FINOS Perspective</strong> front-end.</p></li>
-<li><p><strong>Offline, Secure, Private</strong><br>
-Runs entirely on your laptop or server. No mandatory cloud APIs. Full local control.</p></li>
-<li><p><strong>Model Flexibility</strong><br>
-Supports multiple LLM backends (local LLMs like SQLCoder via ezllama, or cloud models via Rig).</p></li>
+<li><strong>Ollama</strong> (if using local models): Follow <a href="https://ollama.ai/download">installation instructions</a></li>
+<li><strong>SQLCoder model</strong>: <code>ollama pull sqlcoder</code> (or another SQL-focused model)</li>
 </ul>
 </section>
-<section id="how-it-works" class="level2">
-<h2 class="anchored" data-anchor-id="how-it-works">How It Works</h2>
+</section>
+<section id="getting-started" class="level2">
+<h2 class="anchored" data-anchor-id="getting-started">Getting Started</h2>
+<section id="running-nl-cube" class="level3">
+<h3 class="anchored" data-anchor-id="running-nl-cube">Running NL-Cube</h3>
+<p>Launch NL-Cube with your configuration:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">./nl-cube</span> <span class="at">--config</span> config.toml</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Then open your browser to <a href="http://localhost:3000">http://localhost:3000</a></p>
+</section>
+<section id="creating-your-first-database" class="level3">
+<h3 class="anchored" data-anchor-id="creating-your-first-database">Creating Your First Database</h3>
 <ol type="1">
-<li><p><strong>Create Subjects</strong><br>
-Organize your datasets into logical folders called “Subjects”.</p></li>
-<li><p><strong>Drop Data</strong><br>
-Add CSV or Parquet files. NL-Cube ingests them automatically.</p></li>
-<li><p><strong>Ask Questions</strong><br>
-Query your data in natural language. NL-Cube translates your question into SQL.</p></li>
-<li><p><strong>Explore Results</strong><br>
-Use the embedded Perspective UI to slice, dice, and visualize your answers.</p></li>
+<li>Click on the “Databases” dropdown in the navigation bar</li>
+<li>Select “New Database”</li>
+<li>Enter a name (e.g., “sales”)</li>
+<li>Click “Create”</li>
 </ol>
 </section>
-<section id="key-technologies" class="level2">
-<h2 class="anchored" data-anchor-id="key-technologies">Key Technologies</h2>
+<section id="uploading-data-files" class="level3">
+<h3 class="anchored" data-anchor-id="uploading-data-files">Uploading Data Files</h3>
+<ol type="1">
+<li>Select your database from the dropdown</li>
+<li>Click “Upload” in the database panel</li>
+<li>Select CSV or Parquet files containing your data</li>
+<li>Click “Upload”</li>
+</ol>
+<p>The files will be ingested and made available as tables in your database.</p>
+</section>
+<section id="your-first-natural-language-query" class="level3">
+<h3 class="anchored" data-anchor-id="your-first-natural-language-query">Your First Natural Language Query</h3>
+<ol type="1">
+<li>Enter a question in the “Ask Question” box, such as:
 <ul>
-<li><strong>Rust</strong> for extreme performance and reliability.</li>
-<li><strong>DuckDB</strong> for fast, embeddable analytics.</li>
-<li><strong>SQLCoder / Rig / ezllama</strong> for local and flexible LLM-driven querying.</li>
-<li><strong>Axum + HTML + JavaScript + Perspective</strong> for the lightweight UI.</li>
+<li>“What are the top 5 products by revenue?”</li>
+<li>“Show me monthly sales for 2024”</li>
+<li>“Compare average order value by region”</li>
+</ul></li>
+<li>Click “Run Query” or press Ctrl+Enter</li>
+<li>View the results in the visualization panel</li>
+</ol>
+</section>
+</section>
+<section id="key-features" class="level2">
+<h2 class="anchored" data-anchor-id="key-features">Key Features</h2>
+<section id="natural-language-querying" class="level3">
+<h3 class="anchored" data-anchor-id="natural-language-querying">Natural Language Querying</h3>
+<p>The core feature of NL-Cube is the ability to query your data using natural language. Here are some example questions you can ask:</p>
+<p><strong>Simple Aggregations:</strong> - “What’s the total revenue across all orders?” - “How many customers do we have in each region?”</p>
+<p><strong>Time-Based Analysis:</strong> - “Show me the trend of orders by month in 2024” - “What was our revenue growth rate quarter over quarter?”</p>
+<p><strong>Complex Analytics:</strong> - “What’s the return rate by product category?” - “Show me products where sales have declined for 3 consecutive months”</p>
+<p><strong>Comparative Analysis:</strong> - “Compare performance across regions” - “Which salespeople are performing above average?”</p>
+</section>
+<section id="data-visualization" class="level3">
+<h3 class="anchored" data-anchor-id="data-visualization">Data Visualization</h3>
+<p>NL-Cube uses the FINOS Perspective library to provide interactive data visualizations:</p>
+<ol type="1">
+<li><strong>Change Visualization Type:</strong>
+<ul>
+<li>Click on the visualization dropdown to select different views:</li>
+<li>Datagrid (default)</li>
+<li>Various chart types (bar, line, scatter, etc.)</li>
+</ul></li>
+<li><strong>Interactive Pivoting:</strong>
+<ul>
+<li>Drag and drop columns to rows, columns, and values areas</li>
+<li>Dynamically rearrange your data view</li>
+</ul></li>
+<li><strong>Filtering and Sorting:</strong>
+<ul>
+<li>Click column headers to sort</li>
+<li>Use the filter icon to apply filters</li>
+</ul></li>
+<li><strong>Export Options:</strong>
+<ul>
+<li>Export to CSV</li>
+<li>Copy data to clipboard</li>
+<li>Save current view</li>
+</ul></li>
+</ol>
+</section>
+<section id="working-with-multiple-databases" class="level3">
+<h3 class="anchored" data-anchor-id="working-with-multiple-databases">Working with Multiple Databases</h3>
+<p>NL-Cube allows you to organize your data into separate databases (subjects):</p>
+<ol type="1">
+<li><strong>Creating Databases:</strong>
+<ul>
+<li>Use the “New Database” option to create logical domains</li>
+<li>Example domains: “Sales”, “Marketing”, “HR”, “Finance”</li>
+</ul></li>
+<li><strong>Switching Between Databases:</strong>
+<ul>
+<li>Select the database from the dropdown</li>
+<li>Tables will update to show data from that database</li>
+</ul></li>
+<li><strong>Database Isolation:</strong>
+<ul>
+<li>Each database has its own file storage</li>
+<li>Queries run against the currently selected database</li>
+</ul></li>
+</ol>
+</section>
+</section>
+<section id="advanced-usage" class="level2">
+<h2 class="anchored" data-anchor-id="advanced-usage">Advanced Usage</h2>
+<section id="saving-reports-todo" class="level3">
+<h3 class="anchored" data-anchor-id="saving-reports-todo">Saving Reports (Todo)</h3>
+<p>After executing a query that produces valuable insights:</p>
+<ol type="1">
+<li>Click on “Reports” in the navigation bar</li>
+<li>Select “Save Report”</li>
+<li>Enter a name, category, and optional description</li>
+<li>Click “Save”</li>
+</ol>
+<p>Saved reports can be accessed from the Reports dropdown for future reference.</p>
+</section>
+<section id="query-history" class="level3">
+<h3 class="anchored" data-anchor-id="query-history">Query History</h3>
+<p>NL-Cube keeps track of your recent queries:</p>
+<ol type="1">
+<li>Click on “History” in the navigation bar to see recent queries</li>
+<li>Click on any query to run it again</li>
+<li>Use the “Clear” button to reset your history</li>
+</ol>
+</section>
+<section id="sql-preview" class="level3">
+<h3 class="anchored" data-anchor-id="sql-preview">SQL Preview</h3>
+<p>For users who want to see the SQL behind the natural language:</p>
+<ol type="1">
+<li>Toggle the “Show SQL” switch</li>
+<li>The generated SQL will appear below your question</li>
+<li>This is helpful for learning and debugging</li>
+</ol>
+</section>
+</section>
+<section id="troubleshooting" class="level2">
+<h2 class="anchored" data-anchor-id="troubleshooting">Troubleshooting</h2>
+<section id="common-issues" class="level3">
+<h3 class="anchored" data-anchor-id="common-issues">Common Issues</h3>
+<p><strong>No data appears after upload:</strong></p>
+<ul>
+<li>Check file format (should be valid CSV or Parquet)</li>
+<li>Verify file has headers and valid data</li>
+<li>Check browser console for any error messages</li>
+</ul>
+<p><strong>Query returns unexpected results:</strong></p>
+<ul>
+<li>Try rephrasing your question to be more specific</li>
+<li>Toggle SQL preview to see how your question was interpreted</li>
+<li>Examine the SQL to identify potential misinterpretations</li>
+<li>Make sure that you refer to column names, the LLM won’t necessarily figure out that customer means cust_id - larger LLMs will handle this better</li>
+</ul>
+<p><strong>Performance issues with large datasets:</strong></p>
+<ul>
+<li>Consider splitting very large files into smaller chunks</li>
+<li>Add specific filters to your natural language query</li>
+<li>Limit the time range in your query when possible</li>
 </ul>
 </section>
-<section id="philosophy" class="level2">
-<h2 class="anchored" data-anchor-id="philosophy">Philosophy</h2>
-<p>NL-Cube is designed for engineers, analysts, and builders who want:</p>
+<section id="getting-help" class="level3">
+<h3 class="anchored" data-anchor-id="getting-help">Getting Help</h3>
 <ul>
-<li>Zero cloud lock-in.</li>
-<li>True local-first analytics.</li>
-<li>Full control over how their data is queried and presented.</li>
+<li>Check the <a href="https://github.com/joefrost01/nl-cube">GitHub repository</a> for issues and updates</li>
+<li>Submit bug reports using the issue template</li>
+<li>Contribute improvements via pull requests</li>
 </ul>
 
 
+</section>
 </section>
 </section>
 

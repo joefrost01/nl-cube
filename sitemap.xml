@@ -1,7 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://joefrost01.github.io/nl-cube/roadmap.html</loc>
+    <lastmod>2025-05-07T22:13:09.364Z</lastmod>
+  </url>
+  <url>
+    <loc>https://joefrost01.github.io/nl-cube/technical_details.html</loc>
+    <lastmod>2025-05-07T22:13:09.364Z</lastmod>
+  </url>
+  <url>
+    <loc>https://joefrost01.github.io/nl-cube/architecture.html</loc>
+    <lastmod>2025-05-07T22:13:09.360Z</lastmod>
+  </url>
+  <url>
+    <loc>https://joefrost01.github.io/nl-cube/developer_guide.html</loc>
+    <lastmod>2025-05-07T22:13:09.361Z</lastmod>
+  </url>
+  <url>
+    <loc>https://joefrost01.github.io/nl-cube/user_guide.html</loc>
+    <lastmod>2025-05-07T22:13:09.364Z</lastmod>
+  </url>
+  <url>
     <loc>https://joefrost01.github.io/nl-cube/index.html</loc>
-    <lastmod>2025-05-05T23:18:09.817Z</lastmod>
+    <lastmod>2025-05-07T22:13:09.364Z</lastmod>
   </url>
 </urlset>

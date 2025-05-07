@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>NL-Cube</title>
+<title>Architecture – NL-Cube</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -279,7 +279,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./index.html">Introduction</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./architecture.html">Architecture</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -293,13 +293,13 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link active">
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Introduction</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./architecture.html" class="sidebar-item-text sidebar-link">
+  <a href="./architecture.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Architecture</span></a>
   </div>
 </li>
@@ -337,73 +337,276 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#nl-cube" id="toc-nl-cube" class="nav-link active" data-scroll-target="#nl-cube">NL-Cube</a>
+  <li><a href="#nl-cube-architecture" id="toc-nl-cube-architecture" class="nav-link active" data-scroll-target="#nl-cube-architecture">NL-Cube Architecture</a>
   <ul class="collapse">
-  <li><a href="#highlights" id="toc-highlights" class="nav-link" data-scroll-target="#highlights">Highlights</a></li>
-  <li><a href="#how-it-works" id="toc-how-it-works" class="nav-link" data-scroll-target="#how-it-works">How It Works</a></li>
-  <li><a href="#key-technologies" id="toc-key-technologies" class="nav-link" data-scroll-target="#key-technologies">Key Technologies</a></li>
-  <li><a href="#philosophy" id="toc-philosophy" class="nav-link" data-scroll-target="#philosophy">Philosophy</a></li>
+  <li><a href="#system-overview" id="toc-system-overview" class="nav-link" data-scroll-target="#system-overview">System Overview</a></li>
+  <li><a href="#architecture-diagram" id="toc-architecture-diagram" class="nav-link" data-scroll-target="#architecture-diagram">Architecture Diagram</a></li>
+  <li><a href="#component-details" id="toc-component-details" class="nav-link" data-scroll-target="#component-details">Component Details</a>
+  <ul class="collapse">
+  <li><a href="#web-server-axum" id="toc-web-server-axum" class="nav-link" data-scroll-target="#web-server-axum">Web Server (Axum)</a></li>
+  <li><a href="#database-layer-duckdb" id="toc-database-layer-duckdb" class="nav-link" data-scroll-target="#database-layer-duckdb">Database Layer (DuckDB)</a></li>
+  <li><a href="#llm-integration" id="toc-llm-integration" class="nav-link" data-scroll-target="#llm-integration">LLM Integration</a></li>
+  <li><a href="#file-ingestion" id="toc-file-ingestion" class="nav-link" data-scroll-target="#file-ingestion">File Ingestion</a></li>
+  <li><a href="#visualization-finos-perspective" id="toc-visualization-finos-perspective" class="nav-link" data-scroll-target="#visualization-finos-perspective">Visualization (FINOS Perspective)</a></li>
+  </ul></li>
+  <li><a href="#data-flow" id="toc-data-flow" class="nav-link" data-scroll-target="#data-flow">Data Flow</a></li>
+  <li><a href="#design-decisions" id="toc-design-decisions" class="nav-link" data-scroll-target="#design-decisions">Design Decisions</a>
+  <ul class="collapse">
+  <li><a href="#why-rust" id="toc-why-rust" class="nav-link" data-scroll-target="#why-rust">Why Rust?</a></li>
+  <li><a href="#why-duckdb" id="toc-why-duckdb" class="nav-link" data-scroll-target="#why-duckdb">Why DuckDB?</a></li>
+  <li><a href="#why-axum" id="toc-why-axum" class="nav-link" data-scroll-target="#why-axum">Why Axum?</a></li>
+  <li><a href="#why-finos-perspective" id="toc-why-finos-perspective" class="nav-link" data-scroll-target="#why-finos-perspective">Why FINOS Perspective?</a></li>
+  </ul></li>
+  <li><a href="#performance-considerations" id="toc-performance-considerations" class="nav-link" data-scroll-target="#performance-considerations">Performance Considerations</a></li>
+  <li><a href="#security-model" id="toc-security-model" class="nav-link" data-scroll-target="#security-model">Security Model</a></li>
+  <li><a href="#deployment-options" id="toc-deployment-options" class="nav-link" data-scroll-target="#deployment-options">Deployment Options</a></li>
+  <li><a href="#future-architecture-directions" id="toc-future-architecture-directions" class="nav-link" data-scroll-target="#future-architecture-directions">Future Architecture Directions</a></li>
+  <li><a href="#code-organization" id="toc-code-organization" class="nav-link" data-scroll-target="#code-organization">Code Organization</a></li>
   </ul></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Architecture</h1>
+</div>
 
 
 
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
 
 
-<section id="nl-cube" class="level1">
-<h1>NL-Cube</h1>
-<p><strong>NL-Cube</strong> is an <strong>offline-first, natural language analytics engine</strong> that transforms CSV and Parquet files into lightning-fast, pivotable data cubes powered by <strong>DuckDB</strong> — with full <strong>natural language querying</strong> built-in.</p>
-<p>No cloud dependency. No setup hell. One binary. Your data, your control.</p>
-<section id="highlights" class="level2">
-<h2 class="anchored" data-anchor-id="highlights">Highlights</h2>
-<ul>
-<li><p><strong>Natural Language Querying</strong><br>
-Ask real questions (“Top 5 regions by revenue in 2025”) and get instant answers.</p></li>
-<li><p><strong>Flexible Data Ingestion</strong><br>
-Drop CSV or Parquet files into folders to populate your own subject areas.</p></li>
-<li><p><strong>Lightning-Fast Execution</strong><br>
-Queries are translated into optimized DuckDB SQL and executed instantly.</p></li>
-<li><p><strong>Embedded UI</strong><br>
-Analyze, pivot, and visualize your data using an integrated <strong>FINOS Perspective</strong> front-end.</p></li>
-<li><p><strong>Offline, Secure, Private</strong><br>
-Runs entirely on your laptop or server. No mandatory cloud APIs. Full local control.</p></li>
-<li><p><strong>Model Flexibility</strong><br>
-Supports multiple LLM backends (local LLMs like SQLCoder via ezllama, or cloud models via Rig).</p></li>
-</ul>
-</section>
-<section id="how-it-works" class="level2">
-<h2 class="anchored" data-anchor-id="how-it-works">How It Works</h2>
+</header>
+
+
+<section id="nl-cube-architecture" class="level1">
+<h1>NL-Cube Architecture</h1>
+<p>NL-Cube is designed with a modular, clean architecture that prioritizes performance, flexibility, and offline-first operation. This document provides an overview of the system architecture, component interactions, and technical design decisions.</p>
+<section id="system-overview" class="level2">
+<h2 class="anchored" data-anchor-id="system-overview">System Overview</h2>
+<p>NL-Cube transforms CSV and Parquet files into queryable data using natural language. The system is built around these core components:</p>
 <ol type="1">
-<li><p><strong>Create Subjects</strong><br>
-Organize your datasets into logical folders called “Subjects”.</p></li>
-<li><p><strong>Drop Data</strong><br>
-Add CSV or Parquet files. NL-Cube ingests them automatically.</p></li>
-<li><p><strong>Ask Questions</strong><br>
-Query your data in natural language. NL-Cube translates your question into SQL.</p></li>
-<li><p><strong>Explore Results</strong><br>
-Use the embedded Perspective UI to slice, dice, and visualize your answers.</p></li>
+<li><strong>Web Server</strong>: An Axum-based web server providing both a REST API and web UI</li>
+<li><strong>Database Layer</strong>: DuckDB embedded database for high-performance analytics</li>
+<li><strong>LLM Integration</strong>: Support for local and remote language models</li>
+<li><strong>File Ingestion</strong>: CSV and Parquet file processors</li>
+<li><strong>Visualization</strong>: FINOS Perspective integration for data exploration</li>
 </ol>
 </section>
-<section id="key-technologies" class="level2">
-<h2 class="anchored" data-anchor-id="key-technologies">Key Technologies</h2>
+<section id="architecture-diagram" class="level2">
+<h2 class="anchored" data-anchor-id="architecture-diagram">Architecture Diagram</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="images/NL-Cube_architecture.drawio.svg" class="img-fluid figure-img"></p>
+<figcaption>NL-Cube_architecture.drawio.svg</figcaption>
+</figure>
+</div>
+</section>
+<section id="component-details" class="level2">
+<h2 class="anchored" data-anchor-id="component-details">Component Details</h2>
+<section id="web-server-axum" class="level3">
+<h3 class="anchored" data-anchor-id="web-server-axum">Web Server (Axum)</h3>
+<p>The web server is built using the Axum framework, a high-performance, async Rust web framework. It provides:</p>
 <ul>
-<li><strong>Rust</strong> for extreme performance and reliability.</li>
-<li><strong>DuckDB</strong> for fast, embeddable analytics.</li>
-<li><strong>SQLCoder / Rig / ezllama</strong> for local and flexible LLM-driven querying.</li>
-<li><strong>Axum + HTML + JavaScript + Perspective</strong> for the lightweight UI.</li>
+<li>REST API endpoints for data operations</li>
+<li>Web interface for user interaction</li>
+<li>Static file serving</li>
+<li>Multipart file uploads</li>
+<li>Server-sent events for long-running operations</li>
+</ul>
+<p>The web server is implemented in <code>src/web/</code> with these key components:</p>
+<ul>
+<li><strong>Routes</strong>: Defined in <code>src/web/routes.rs</code>, mapping URLs to handlers</li>
+<li><strong>Handlers</strong>: API logic in <code>src/web/handlers/api.rs</code> and UI in <code>src/web/handlers/ui.rs</code></li>
+<li><strong>State</strong>: Application state management in <code>src/web/state.rs</code></li>
 </ul>
 </section>
-<section id="philosophy" class="level2">
-<h2 class="anchored" data-anchor-id="philosophy">Philosophy</h2>
-<p>NL-Cube is designed for engineers, analysts, and builders who want:</p>
+<section id="database-layer-duckdb" class="level3">
+<h3 class="anchored" data-anchor-id="database-layer-duckdb">Database Layer (DuckDB)</h3>
+<p>NL-Cube uses DuckDB as its embedded database engine, chosen for:</p>
 <ul>
-<li>Zero cloud lock-in.</li>
-<li>True local-first analytics.</li>
-<li>Full control over how their data is queried and presented.</li>
+<li>Column-oriented storage for analytical queries</li>
+<li>Native support for Parquet and CSV files</li>
+<li>High-performance SQL execution</li>
+<li>Low memory footprint</li>
+<li>Zero-configuration deployment</li>
+</ul>
+<p>Each subject (data domain) gets its own DuckDB database file for isolation and organization. The database layer includes:</p>
+<ul>
+<li><strong>Multi-DB Manager</strong>: Manages connections to multiple subject databases</li>
+<li><strong>Connection Pool</strong>: Provides efficient connection management</li>
+<li><strong>Schema Manager</strong>: Tracks database schemas for LLM context</li>
+</ul>
+</section>
+<section id="llm-integration" class="level3">
+<h3 class="anchored" data-anchor-id="llm-integration">LLM Integration</h3>
+<p>NL-Cube supports multiple LLM backends through a flexible provider architecture:</p>
+<ul>
+<li><strong>Ollama Integration</strong>: Uses Ollama for local model hosting</li>
+<li><strong>Remote API</strong>: Supports cloud-based LLM APIs</li>
+</ul>
+<p>The LLM integration translates natural language questions into SQL queries using:</p>
+<ol type="1">
+<li>Schema extraction from the database</li>
+<li>Context-aware prompting</li>
+<li>SQL generation</li>
+<li>Result validation and execution</li>
+</ol>
+</section>
+<section id="file-ingestion" class="level3">
+<h3 class="anchored" data-anchor-id="file-ingestion">File Ingestion</h3>
+<p>The ingestion system processes data files into queryable tables:</p>
+<ul>
+<li><strong>CSV Ingestor</strong>: Handles comma-separated value files</li>
+<li><strong>Parquet Ingestor</strong>: Processes Apache Parquet files</li>
+<li><strong>Schema Inference</strong>: Automatically detects column types and constraints</li>
+</ul>
+</section>
+<section id="visualization-finos-perspective" class="level3">
+<h3 class="anchored" data-anchor-id="visualization-finos-perspective">Visualization (FINOS Perspective)</h3>
+<p>For data exploration, NL-Cube integrates the FINOS Perspective library:</p>
+<ul>
+<li><strong>Interactive Pivoting</strong>: Slice and dice query results</li>
+<li><strong>Multiple Views</strong>: Table, charts, and pivot views</li>
+<li><strong>Client-side Filtering</strong>: Further refine results after queries</li>
+<li><strong>Export Capabilities</strong>: Save results in various formats</li>
+</ul>
+</section>
+</section>
+<section id="data-flow" class="level2">
+<h2 class="anchored" data-anchor-id="data-flow">Data Flow</h2>
+<ol type="1">
+<li><strong>User uploads CSV/Parquet files</strong> to a subject folder</li>
+<li><strong>Files are processed</strong> by the appropriate ingestor:
+<ul>
+<li>Schema is inferred</li>
+<li>Data is loaded into DuckDB tables</li>
+<li>Metadata is updated</li>
+</ul></li>
+<li><strong>User submits natural language query</strong></li>
+<li><strong>LLM converts query to SQL</strong>:
+<ul>
+<li>Schema context is provided</li>
+<li>SQL query is generated</li>
+<li>Query is validated</li>
+</ul></li>
+<li><strong>Query executes against DuckDB</strong></li>
+<li><strong>Results are returned</strong> as Arrow data</li>
+<li><strong>Perspective visualizes</strong> the results</li>
+</ol>
+</section>
+<section id="design-decisions" class="level2">
+<h2 class="anchored" data-anchor-id="design-decisions">Design Decisions</h2>
+<section id="why-rust" class="level3">
+<h3 class="anchored" data-anchor-id="why-rust">Why Rust?</h3>
+<p>Rust was chosen for NL-Cube because it offers:</p>
+<ul>
+<li>Memory safety without garbage collection</li>
+<li>High performance for data processing</li>
+<li>Excellent concurrency model</li>
+<li>Strong type system to prevent bugs</li>
+<li>Good ecosystem of libraries</li>
+</ul>
+</section>
+<section id="why-duckdb" class="level3">
+<h3 class="anchored" data-anchor-id="why-duckdb">Why DuckDB?</h3>
+<p>DuckDB provides:</p>
+<ul>
+<li>Column-oriented storage for analytics</li>
+<li>Embeddable database without separate server</li>
+<li>Native vectorized execution</li>
+<li>High-performance for analytical queries</li>
+<li>Direct support for CSV and Parquet</li>
+</ul>
+</section>
+<section id="why-axum" class="level3">
+<h3 class="anchored" data-anchor-id="why-axum">Why Axum?</h3>
+<p>Axum was chosen because:</p>
+<ul>
+<li>Built on top of Tokio for async I/O</li>
+<li>Tower middleware ecosystem</li>
+<li>Type-safe routing</li>
+<li>Modern, ergonomic API</li>
+<li>Excellent performance</li>
+</ul>
+</section>
+<section id="why-finos-perspective" class="level3">
+<h3 class="anchored" data-anchor-id="why-finos-perspective">Why FINOS Perspective?</h3>
+<p>Perspective provides:</p>
+<ul>
+<li>High-performance WebAssembly-based visualization</li>
+<li>Interactive data exploration</li>
+<li>Multiple visualization types</li>
+<li>Seamless integration with Arrow data format</li>
+</ul>
+</section>
+</section>
+<section id="performance-considerations" class="level2">
+<h2 class="anchored" data-anchor-id="performance-considerations">Performance Considerations</h2>
+<p>NL-Cube is designed for performance with:</p>
+<ul>
+<li><strong>Async Processing</strong>: Non-blocking I/O throughout the stack</li>
+<li><strong>Connection Pooling</strong>: Efficient database connection management</li>
+<li><strong>Arrow Data Format</strong>: Zero-copy data interchange</li>
+<li><strong>Multi-threading</strong>: Parallel processing where appropriate</li>
+<li><strong>Static File Embedding</strong>: Fast access to UI resources</li>
+</ul>
+</section>
+<section id="security-model" class="level2">
+<h2 class="anchored" data-anchor-id="security-model">Security Model</h2>
+<ul>
+<li><strong>Isolation</strong>: Each subject has its own database file</li>
+<li><strong>Input Validation</strong>: All user inputs are validated</li>
+<li><strong>Parameterized Queries</strong>: SQL injection prevention</li>
+<li><strong>File Type Validation</strong>: Only approved file formats are accepted</li>
+</ul>
+</section>
+<section id="deployment-options" class="level2">
+<h2 class="anchored" data-anchor-id="deployment-options">Deployment Options</h2>
+<p>NL-Cube can be deployed in various ways:</p>
+<ul>
+<li><strong>Standalone Binary</strong>: Single-file distribution</li>
+<li><strong>Docker Container</strong>: Isolated, reproducible environment</li>
+<li><strong>Desktop Application</strong>: Using web technologies in a desktop wrapper</li>
+</ul>
+</section>
+<section id="future-architecture-directions" class="level2">
+<h2 class="anchored" data-anchor-id="future-architecture-directions">Future Architecture Directions</h2>
+<p>Planned architectural enhancements include:</p>
+<ul>
+<li><strong>Data Sources</strong>: Use DuckDB imports for additional data sources</li>
+<li><strong>Additional LLMs</strong>: Allow user to provision different LLMs via Rig</li>
+</ul>
+</section>
+<section id="code-organization" class="level2">
+<h2 class="anchored" data-anchor-id="code-organization">Code Organization</h2>
+<p>The codebase is organized into these main directories:</p>
+<ul>
+<li><strong>src/</strong>: Rust source code
+<ul>
+<li><strong>config.rs</strong>: Configuration management</li>
+<li><strong>db/</strong>: Database connection and schema management</li>
+<li><strong>ingest/</strong>: File ingestion (CSV, Parquet)</li>
+<li><strong>llm/</strong>: Language model integration</li>
+<li><strong>web/</strong>: Web server and API</li>
+</ul></li>
+<li><strong>static/</strong>: Frontend assets
+<ul>
+<li><strong>js/</strong>: JavaScript modules</li>
+<li><strong>css/</strong>: Styling</li>
+<li><strong>index.html</strong>: Main application page</li>
+</ul></li>
+<li><strong>docs/</strong>: Documentation sources</li>
 </ul>
 
 
