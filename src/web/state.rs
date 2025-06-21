@@ -22,6 +22,7 @@ pub struct AppState {
     pub startup_time: chrono::DateTime<chrono::Utc>,
     pub current_subject: RwLock<Option<String>>,
     pub schema_manager: SchemaManager,
+    pub multi_db_manager: Arc<MultiDbConnectionManager>, // Add this field
 }
 
 impl AppState {
@@ -56,20 +57,46 @@ impl AppState {
             startup_time: chrono::Utc::now(),
             current_subject: RwLock::new(None), // Initialize as None
             schema_manager,
+            multi_db_manager, // Store the reference
         }
     }
 
+    pub fn get_multi_db_manager(&self) -> &Arc<MultiDbConnectionManager> {
+        &self.multi_db_manager
+    }
+
     pub async fn set_current_subject(&self, subject_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Verify subject exists
-        let subjects = self.subjects.read().await;
-        if !subjects.contains(&subject_name.to_string()) {
-            return Err(format!("Subject '{}' does not exist", subject_name).into());
+        // Check if the subject directory and database file exist, regardless of what's in the cache
+        let subject_dir = self.data_dir.join(subject_name);
+        let db_path = subject_dir.join(format!("{}.duckdb", subject_name));
+
+        if !db_path.exists() {
+            return Err(format!("Subject '{}' does not exist (database file not found)", subject_name).into());
         }
+
+        info!("Setting current subject to: {} (database at {})", subject_name, db_path.display());
+
+        // Register with multi_db_manager
+        self.multi_db_manager.register_subject_db(
+            subject_name,
+            db_path.to_string_lossy().as_ref()
+        );
+        info!("Registered subject {} with multi-db manager", subject_name);
 
         // Set as current subject
         let mut current = self.current_subject.write().await;
         *current = Some(subject_name.to_string());
 
+        // Ensure the subject is in the cached list as well
+        {
+            let mut subjects = self.subjects.write().await;
+            if !subjects.contains(&subject_name.to_string()) {
+                subjects.push(subject_name.to_string());
+                info!("Added subject {} to cached list", subject_name);
+            }
+        }
+
+        info!("Successfully set current subject to: {}", subject_name);
         Ok(())
     }
 

@@ -60,6 +60,8 @@ This query will run on a DuckDB database with the following tables and columns:
 ### Expected SQL Format:
 - Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)
 - Reference column names exactly as shown in the schema
+- Take extreme care to identify column names in the user's question
+- Take extreme care over the names of the available tables make sure you check that your SQL is only using tables from the above list
 - Make sure to use double quotes around column names with spaces or special characters
 - End your query with a semicolon
 

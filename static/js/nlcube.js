@@ -561,6 +561,14 @@ async function handleCreateSubject() {
     }
 
     try {
+        // Show loading state
+        const createBtn = document.getElementById('createSubjectSubmitBtn');
+        createBtn.disabled = true;
+        createBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating...';
+
+        console.log(`Creating subject: ${subjectName}`);
+
+        // Create the subject
         const response = await fetch(`${API_BASE_URL}/subjects/${subjectName}`, {
             method: 'POST'
         });
@@ -570,20 +578,33 @@ async function handleCreateSubject() {
             throw new Error(errorText || `Failed to create subject: ${response.statusText}`);
         }
 
+        console.log(`Successfully created subject: ${subjectName}`);
+
         // Close modal
         bootstrap.Modal.getInstance(document.getElementById('createSubjectModal')).hide();
 
         // Clear input
         document.getElementById('newSubjectName').value = '';
+        createBtn.disabled = false;
+        createBtn.innerHTML = 'Create';
 
-        // Refresh databases list and select the new one
+        // Refresh databases list
         await fetchSubjects();
-        selectSubject(subjectName);
 
-        showToast(`Database "${subjectName}" created successfully`, 'success');
+        // Wait a moment to ensure database file is fully initialized
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Then select the new one
+        await selectSubject(subjectName);
+
     } catch (error) {
         console.error('Error creating subject:', error);
         showToast(`Failed to create subject: ${error.message}`, 'error');
+
+        // Reset button
+        const createBtn = document.getElementById('createSubjectSubmitBtn');
+        createBtn.disabled = false;
+        createBtn.innerHTML = 'Create';
     }
 }
 
@@ -628,20 +649,30 @@ async function handleFileUpload() {
 // Handle subject selection
 async function selectSubject(subjectName) {
     try {
+        // Show loading indicator
+        const currentSubjectNameEl = document.getElementById('currentSubjectName');
+        if (currentSubjectNameEl) {
+            currentSubjectNameEl.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...`;
+        }
+
+        console.log(`Selecting subject: ${subjectName}`);
+
         // Call API to set the current subject
         const response = await fetch(`${API_BASE_URL}/subjects/select/${subjectName}`, {
             method: 'POST'
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to select subject: ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(errorText || `Failed to select subject: ${response.statusText}`);
         }
+
+        console.log(`Successfully selected subject: ${subjectName}`);
 
         // Update local state
         appState.currentSubject = subjectName;
 
         // Update UI
-        const currentSubjectNameEl = document.getElementById('currentSubjectName');
         if (currentSubjectNameEl) {
             currentSubjectNameEl.textContent = subjectName;
         }
@@ -654,10 +685,16 @@ async function selectSubject(subjectName) {
         // Fetch subject details - now includes the tables list
         await fetchSubjectDetails(subjectName);
 
-        showToast(`Subject "${subjectName}" selected`, 'success');
+        showToast(`Database "${subjectName}" selected`, 'success');
     } catch (error) {
         console.error(`Error selecting subject ${subjectName}:`, error);
         showToast(`Failed to select subject: ${error.message}`, 'error');
+
+        // Reset UI
+        const currentSubjectNameEl = document.getElementById('currentSubjectName');
+        if (currentSubjectNameEl) {
+            currentSubjectNameEl.textContent = appState.currentSubject || 'None';
+        }
     }
 }
 

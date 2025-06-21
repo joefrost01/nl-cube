@@ -1,0 +1,8 @@
+which hour of the day is best for tip_amount based on tpep_pickup_datetime?
+
+how many trips?
+
+which hour of the day has the highest average total_amount based on tpep_pickup_datetime?
+
+which passenger_count gives the highest average tip_amount?
+

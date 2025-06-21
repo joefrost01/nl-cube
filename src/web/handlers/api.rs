@@ -10,7 +10,7 @@ use std::fs;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::web::state::AppState;
 
@@ -541,25 +541,44 @@ pub async fn select_subject(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let subject = path.0;
     let subject_path = state.data_dir.join(&subject);
+    let db_path = subject_path.join(format!("{}.duckdb", subject));
 
-    if !subject_path.exists() {
-        return Err((StatusCode::NOT_FOUND, "Subject not found".to_string()));
+    // Check if the database file exists directly
+    if !db_path.exists() {
+        error!("Subject database file not found at {}", db_path.display());
+        return Err((StatusCode::NOT_FOUND, "Subject database not found".to_string()));
     }
 
-    // Pass a reference to the subject
-    match state.set_current_subject(&subject).await {
+    info!("Selecting subject: {} (database at {})", subject, db_path.display());
+
+    // Refresh subjects to ensure the new one is in the list
+    match state.refresh_subjects().await {
         Ok(_) => {
-            info!("Selected subject: {}", subject);
-            Ok(StatusCode::OK)
+            info!("Refreshed subjects list before selection");
         }
         Err(e) => {
-            error!("Failed to set current subject: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to set current subject: {}", e)
-            ))
+            warn!("Failed to refresh subjects before selection: {}", e);
+            // Continue anyway, we'll set it directly
         }
     }
+
+    // Set the current subject directly, bypassing validation
+    {
+        let mut current = state.current_subject.write().await;
+        *current = Some(subject.clone());
+        info!("Set current subject to: {}", subject);
+    }
+
+    // Also ensure the subject is in the cached list
+    {
+        let mut subjects = state.subjects.write().await;
+        if !subjects.contains(&subject) {
+            subjects.push(subject.clone());
+            info!("Added subject {} to cached list", subject);
+        }
+    }
+
+    Ok(StatusCode::OK)
 }
 
 // Helper function to get tables from a database connection using multiple approaches
@@ -669,24 +688,53 @@ pub async fn create_subject(
         )
     })?;
 
-    // Create the schema in the database
-    let conn = state.db_pool.get().map_err(|e| {
-        error!("Failed to get DB connection: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database connection error".to_string())
-    })?;
+    // Create the database file
+    let db_path = subject_path.join(format!("{}.duckdb", subject));
 
-    let create_schema_sql = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", subject);
-    conn.execute(&create_schema_sql, []).map_err(|e| {
-        error!("Failed to create database schema: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to create database schema".to_string(),
-        )
-    })?;
+    // Open a connection to create the database file
+    match duckdb::Connection::open(&db_path) {
+        Ok(_) => {
+            info!("Successfully created database file at {}", db_path.display());
+        },
+        Err(e) => {
+            error!("Failed to create database file: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to initialize database file: {}", e)
+            ));
+        }
+    }
+
+    // Register the subject with the multi-db manager
+    state.get_multi_db_manager().register_subject_db(
+        &subject,
+        db_path.to_string_lossy().as_ref()
+    );
+    info!("Registered subject {} with multi-db manager", subject);
 
     // Refresh subjects list
-    state.refresh_subjects().await.ok();
+    match state.refresh_subjects().await {
+        Ok(_) => {
+            info!("Refreshed subject list after creating {}", subject);
+        }
+        Err(e) => {
+            warn!("Failed to refresh subjects after creation: {}", e);
+            // Continue anyway since the subject was created
+        }
+    }
 
+    // Refresh schema cache
+    match state.schema_manager.refresh_cache().await {
+        Ok(_) => {
+            info!("Refreshed schema cache after creating subject {}", subject);
+        }
+        Err(e) => {
+            warn!("Failed to refresh schema cache after subject creation: {}", e);
+            // Continue anyway
+        }
+    }
+
+    info!("Successfully created subject: {}", subject);
     Ok(StatusCode::CREATED)
 }
 
