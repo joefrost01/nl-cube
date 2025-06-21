@@ -1,205 +1,5 @@
 [
   {
-    "objectID": "roadmap.html",
-    "href": "roadmap.html",
-    "title": "Roadmap",
-    "section": "",
-    "text": "This document outlines the planned future development of NL-Cube. The roadmap is organized into short-term, medium-term, and long-term goals to provide a clear vision of where the project is headed.\n\n\n\n\nExpand NL-Cube’s data ingestion capabilities to support all formats that DuckDB can handle:\n\nJSON Files: Support for structured JSON data files\nExcel Files: Direct import of XLSX/XLS spreadsheets\nORC Files: Support for Optimized Row Columnar format\nAvro Files: Support for Apache Avro format\nXML Files: Structured XML document ingestion\nHTTP/REST Sources: Direct import from REST APIs\nDatabase Connections: Import from other databases\n\nImplementation will leverage DuckDB’s built-in capabilities:\n-- Example of how DuckDB handles different formats\nCREATE TABLE json_table AS SELECT * FROM read_json('data.json', auto_detect=true);\nCREATE TABLE excel_table AS SELECT * FROM read_excel('data.xlsx');\nCREATE TABLE orc_table AS SELECT * FROM read_orc('data.orc');\n\n\n\n\nImproved type detection for edge cases\nBetter handling of date/time formats\nDetection of primary and foreign keys\nSmart detection of hierarchical data\nPreservation of original metadata\n\n\n\n\n\n\n\n\nIntegration with Rig crate for LLM orchestration\nUser-selectable models through configuration\nDynamically switchable LLM providers\nModel version tracking and compatibility checks\nPerformance benchmarking across models\n\nConfiguration example:\n# Different models can be configured\n[[llm.models]]\nname = \"sqlcoder-34b\"\nprovider = \"databricks\"\nmodel_id = \"databricks/dbrx-instruct\"\n\n[[llm.models]]\nname = \"arctic-sqler\"\nprovider = \"anthropic\"\nmodel_id = \"claude-3-opus-20240229\"\n\n\n\n\nUser-editable prompt templates\nDomain-specific prompt optimization\nFew-shot learning examples for specialized domains\nPrompt versioning and A/B testing\n\n\n\n\n\n\n\n\nTemplate-Based Reports: Customizable report templates\nScheduled Reports: Automated report generation\nExport Formats: PDF, Excel, HTML, and Markdown\nCollaboration: Sharing and commenting on reports\nVersioning: Track changes to reports over time\n\n\n\n\n\nExpanded chart types and visualizations\nCustom visualization themes\nInteractive dashboards\nEmbeddable report widgets\nAnnotation and markup tools\n\n\n\n\n\n\n\n\nGUI for defining relationships between tables\nAutomatic foreign key detection\nEntity-relationship diagram generation\nJoin path recommendations for queries\nReferential integrity enforcement\n\nExample relationship definition:\n{\n  \"relationships\": [\n    {\n      \"from\": {\n        \"table\": \"orders\",\n        \"column\": \"customer_id\"\n      },\n      \"to\": {\n        \"table\": \"customers\",\n        \"column\": \"id\"\n      },\n      \"type\": \"many-to-one\"\n    }\n  ]\n}\n\n\n\n\nAllow addition of data to existing tables\nSchema evolution and migration\nColumn-level metadata and descriptions\nData quality constraints\nSchema versioning\n\n\n\n\n\n\n\n\nAutomated ingestion of files from watched directories\nConfigurable processing rules based on file patterns\nError handling and notification for problematic files\nThrottling and batching for high-volume scenarios\nProcessing history and audit logs\n\nConfiguration example:\n[[watch_folders]]\npath = \"data/incoming/sales\"\nsubject = \"sales\"\npattern = \"*.csv\"\ntable_prefix = \"sales_\"\npoll_interval_seconds = 30\n\n\n\n\nIntegration with Apache Kafka and other streaming platforms\nReal-time data processing pipelines\nWindowed aggregations on streaming data\nConfigurable stream processors\nStream-to-table materialization\n\nExample Kafka configuration:\n[[streaming.sources]]\ntype = \"kafka\"\nbootstrap_servers = \"kafka1:9092,kafka2:9092\"\ntopic = \"sales_data\"\ngroup_id = \"nl-cube-consumer\"\nsubject = \"sales\"\ntable = \"real_time_sales\"\n\n\n\n\nUser-defined aggregate definitions\nIncremental aggregation updates\nTime-based and event-based windows\nDirect Perspective integration for live updates\nMaterialized view management\n\n\n\n\n\n\n\n\nSupport for OAuth 2.0 authentication flows\nIntegration with identity providers (Google, GitHub, Microsoft)\nJWT token handling\nRole-based authorization\nAPI key management for programmatic access\n\n\n\n\n\nUser account management\nPersonalized settings and preferences\nResource quotas and usage tracking\nActivity logging and audit trails\nAccess control for subjects and reports\n\n\n\n\n\n\n\n\nOption to bundle lightweight local LLMs\nOptimized models for SQL generation\nNo internet dependency for core functionality\nFine-tuning tools for domain-specific datasets\nModel switchover between local and remote as needed\n\n\n\n\n\nDomain-specific sample datasets\nExample queries and reports\nGuided tutorials using sample data\nBenchmarking datasets\nEasy data reset and refresh\n\n\n\n\n\n\n\n\nIntelligent suggestions as you type\nAuto-completion for column names and values\nQuery history integration\nContext-aware suggestions based on schema\nSemantic understanding of partial queries\n\n\n\n\n\nOffline capability\nMobile-friendly responsive design\nNative app-like experience\nPush notifications\nBackground synchronization\n\n\n\n\n\nComprehensive keyboard navigation\nCustomizable keyboard shortcuts\nCommand palette for quick actions\nBatch operations\nQuery scripting capabilities\n\n\n\n\n\n\n\n\nCentralized deployment management\nUsage analytics and monitoring\nBackup and disaster recovery\nResource governance\nHealth checks and diagnostics\n\n\n\n\n\nAPI for third-party integration\nPlugin architecture\nWebhooks for event-driven workflows\nSSO integration\nEnterprise data catalog integration\n\n\n\n\n\n\n\n\nAdditional file formats: JSON, Excel\nReport saving and management\nBasic relationship definition\nData append to existing tables\nAuto-complete for column names\n\n\n\n\n\nHot watch folder for auto-ingestion\nStreaming data support (Kafka)\nUser-defined aggregates\nOAuth security integration\nLocal LLM bundling options\n\n\n\n\n\nFull multi-user mode\nEnterprise administration\nAdvanced streaming analytics\nComprehensive plugin system\nAI-assisted data modeling\n\n\n\n\n\nThe NL-Cube roadmap is guided by user feedback and community needs. We welcome contributions and suggestions through:\n\nGitHub issues and discussions\nCommunity forums\nUser feedback surveys\nUsage analytics\n\nPriority will be given to features that:\n\nImprove core natural language query capabilities\nEnhance user experience for non-technical users\nExpand data connectivity options\nSimplify deployment and administration\n\nTo contribute to the roadmap or provide feedback, please open an issue on the GitHub repository.",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#data-import-enhancements",
-    "href": "roadmap.html#data-import-enhancements",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Expand NL-Cube’s data ingestion capabilities to support all formats that DuckDB can handle:\n\nJSON Files: Support for structured JSON data files\nExcel Files: Direct import of XLSX/XLS spreadsheets\nORC Files: Support for Optimized Row Columnar format\nAvro Files: Support for Apache Avro format\nXML Files: Structured XML document ingestion\nHTTP/REST Sources: Direct import from REST APIs\nDatabase Connections: Import from other databases\n\nImplementation will leverage DuckDB’s built-in capabilities:\n-- Example of how DuckDB handles different formats\nCREATE TABLE json_table AS SELECT * FROM read_json('data.json', auto_detect=true);\nCREATE TABLE excel_table AS SELECT * FROM read_excel('data.xlsx');\nCREATE TABLE orc_table AS SELECT * FROM read_orc('data.orc');\n\n\n\n\nImproved type detection for edge cases\nBetter handling of date/time formats\nDetection of primary and foreign keys\nSmart detection of hierarchical data\nPreservation of original metadata",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#expanded-llm-support",
-    "href": "roadmap.html#expanded-llm-support",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Integration with Rig crate for LLM orchestration\nUser-selectable models through configuration\nDynamically switchable LLM providers\nModel version tracking and compatibility checks\nPerformance benchmarking across models\n\nConfiguration example:\n# Different models can be configured\n[[llm.models]]\nname = \"sqlcoder-34b\"\nprovider = \"databricks\"\nmodel_id = \"databricks/dbrx-instruct\"\n\n[[llm.models]]\nname = \"arctic-sqler\"\nprovider = \"anthropic\"\nmodel_id = \"claude-3-opus-20240229\"\n\n\n\n\nUser-editable prompt templates\nDomain-specific prompt optimization\nFew-shot learning examples for specialized domains\nPrompt versioning and A/B testing",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#report-management",
-    "href": "roadmap.html#report-management",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Template-Based Reports: Customizable report templates\nScheduled Reports: Automated report generation\nExport Formats: PDF, Excel, HTML, and Markdown\nCollaboration: Sharing and commenting on reports\nVersioning: Track changes to reports over time\n\n\n\n\n\nExpanded chart types and visualizations\nCustom visualization themes\nInteractive dashboards\nEmbeddable report widgets\nAnnotation and markup tools",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#advanced-data-modeling",
-    "href": "roadmap.html#advanced-data-modeling",
-    "title": "Roadmap",
-    "section": "",
-    "text": "GUI for defining relationships between tables\nAutomatic foreign key detection\nEntity-relationship diagram generation\nJoin path recommendations for queries\nReferential integrity enforcement\n\nExample relationship definition:\n{\n  \"relationships\": [\n    {\n      \"from\": {\n        \"table\": \"orders\",\n        \"column\": \"customer_id\"\n      },\n      \"to\": {\n        \"table\": \"customers\",\n        \"column\": \"id\"\n      },\n      \"type\": \"many-to-one\"\n    }\n  ]\n}\n\n\n\n\nAllow addition of data to existing tables\nSchema evolution and migration\nColumn-level metadata and descriptions\nData quality constraints\nSchema versioning",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#real-time-data-processing",
-    "href": "roadmap.html#real-time-data-processing",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Automated ingestion of files from watched directories\nConfigurable processing rules based on file patterns\nError handling and notification for problematic files\nThrottling and batching for high-volume scenarios\nProcessing history and audit logs\n\nConfiguration example:\n[[watch_folders]]\npath = \"data/incoming/sales\"\nsubject = \"sales\"\npattern = \"*.csv\"\ntable_prefix = \"sales_\"\npoll_interval_seconds = 30\n\n\n\n\nIntegration with Apache Kafka and other streaming platforms\nReal-time data processing pipelines\nWindowed aggregations on streaming data\nConfigurable stream processors\nStream-to-table materialization\n\nExample Kafka configuration:\n[[streaming.sources]]\ntype = \"kafka\"\nbootstrap_servers = \"kafka1:9092,kafka2:9092\"\ntopic = \"sales_data\"\ngroup_id = \"nl-cube-consumer\"\nsubject = \"sales\"\ntable = \"real_time_sales\"\n\n\n\n\nUser-defined aggregate definitions\nIncremental aggregation updates\nTime-based and event-based windows\nDirect Perspective integration for live updates\nMaterialized view management",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#security-and-multi-user-support",
-    "href": "roadmap.html#security-and-multi-user-support",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Support for OAuth 2.0 authentication flows\nIntegration with identity providers (Google, GitHub, Microsoft)\nJWT token handling\nRole-based authorization\nAPI key management for programmatic access\n\n\n\n\n\nUser account management\nPersonalized settings and preferences\nResource quotas and usage tracking\nActivity logging and audit trails\nAccess control for subjects and reports",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#local-llm-integration",
-    "href": "roadmap.html#local-llm-integration",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Option to bundle lightweight local LLMs\nOptimized models for SQL generation\nNo internet dependency for core functionality\nFine-tuning tools for domain-specific datasets\nModel switchover between local and remote as needed\n\n\n\n\n\nDomain-specific sample datasets\nExample queries and reports\nGuided tutorials using sample data\nBenchmarking datasets\nEasy data reset and refresh",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#user-experience-improvements",
-    "href": "roadmap.html#user-experience-improvements",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Intelligent suggestions as you type\nAuto-completion for column names and values\nQuery history integration\nContext-aware suggestions based on schema\nSemantic understanding of partial queries\n\n\n\n\n\nOffline capability\nMobile-friendly responsive design\nNative app-like experience\nPush notifications\nBackground synchronization\n\n\n\n\n\nComprehensive keyboard navigation\nCustomizable keyboard shortcuts\nCommand palette for quick actions\nBatch operations\nQuery scripting capabilities",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#enterprise-features",
-    "href": "roadmap.html#enterprise-features",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Centralized deployment management\nUsage analytics and monitoring\nBackup and disaster recovery\nResource governance\nHealth checks and diagnostics\n\n\n\n\n\nAPI for third-party integration\nPlugin architecture\nWebhooks for event-driven workflows\nSSO integration\nEnterprise data catalog integration",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#development-milestones",
-    "href": "roadmap.html#development-milestones",
-    "title": "Roadmap",
-    "section": "",
-    "text": "Additional file formats: JSON, Excel\nReport saving and management\nBasic relationship definition\nData append to existing tables\nAuto-complete for column names\n\n\n\n\n\nHot watch folder for auto-ingestion\nStreaming data support (Kafka)\nUser-defined aggregates\nOAuth security integration\nLocal LLM bundling options\n\n\n\n\n\nFull multi-user mode\nEnterprise administration\nAdvanced streaming analytics\nComprehensive plugin system\nAI-assisted data modeling",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "roadmap.html#feedback-and-prioritization",
-    "href": "roadmap.html#feedback-and-prioritization",
-    "title": "Roadmap",
-    "section": "",
-    "text": "The NL-Cube roadmap is guided by user feedback and community needs. We welcome contributions and suggestions through:\n\nGitHub issues and discussions\nCommunity forums\nUser feedback surveys\nUsage analytics\n\nPriority will be given to features that:\n\nImprove core natural language query capabilities\nEnhance user experience for non-technical users\nExpand data connectivity options\nSimplify deployment and administration\n\nTo contribute to the roadmap or provide feedback, please open an issue on the GitHub repository.",
-    "crumbs": [
-      "Roadmap"
-    ]
-  },
-  {
-    "objectID": "technical_details.html",
-    "href": "technical_details.html",
-    "title": "Technical Details",
-    "section": "",
-    "text": "This document provides in-depth technical information about NL-Cube’s implementation, covering database integration, LLM functionality, and the data processing pipeline.\n\n\nNL-Cube uses DuckDB as its embedded analytics database engine, chosen for its performance and ease of deployment.\n\n\nNL-Cube implements a sophisticated multi-database connection management system:\n\nConnection Pool: Maintains a configurable pool of database connections using r2d2\n// ConnectionManager implementation\nimpl ManageConnection for DuckDBConnectionManager {\n    type Connection = Connection;\n    type Error = duckdb::Error;\n\n    fn connect(&self) -&gt; Result&lt;Self::Connection, Self::Error&gt; {\n        Connection::open(&self.connection_string)\n    }\n\n    fn is_valid(&self, conn: &mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt; {\n        conn.execute(\"SELECT 1\", [])?;\n        Ok(())\n    }\n\n    fn has_broken(&self, _conn: &mut Self::Connection) -&gt; bool {\n        false\n    }\n}\nMulti-Database Support: Each subject gets its own DuckDB database file\npub struct MultiDbConnectionManager {\n    main_db_path: String,\n    data_dir: PathBuf,\n    attached_dbs: Arc&lt;Mutex&lt;HashMap&lt;String, String&gt;&gt;&gt;,\n}\nThread Safety: Blocking database operations are executed in dedicated Tokio tasks\ntokio::task::spawn_blocking(move || {\n    // Database operations that might block\n    let conn = Connection::open(&db_path_string)?;\n    // ...\n})\n\n\n\n\nThe SchemaManager component maintains metadata about database schemas:\n\nSchema Discovery: Scans subject directories for database files\nCache Management: Maintains a cached view of schemas and tables\nRefresh Mechanism: Periodically updates schema information\n\npub struct SchemaManager {\n    schema_cache: RwLock&lt;HashMap&lt;String, Vec&lt;String&gt;&gt;&gt;,\n    last_refresh: RwLock&lt;chrono::DateTime&lt;chrono::Utc&gt;&gt;,\n    data_dir: PathBuf,\n}\n\n\n\nWhen executing a natural language query:\n\nContext Gathering: Schema information is extracted from the database\nLLM Translation: Natural language is translated to SQL\nExecution: SQL is executed against the appropriate subject database\nArrow Conversion: Results are converted to Apache Arrow format\nResponse: Arrow data is returned to the client for visualization\n\n// Simplified query flow\nlet table_metadata = app_state.get_table_metadata(Some(&target_subject)).await?;\nlet raw_sql = mgr.generate_sql(&payload.question, &table_metadata).await?;\nlet conn = duckdb::Connection::open(&db_path)?;\nlet arrow_batch = stmt.query_arrow([])?;\n\n\n\n\nNL-Cube features a flexible LLM integration system that supports multiple backends through a provider architecture.\n\n\nThe SqlGenerator trait defines the interface for LLM providers:\n#[async_trait]\npub trait SqlGenerator: Send + Sync {\n    async fn generate_sql(&self, question: &str, schema: &str) -&gt; Result&lt;String, LlmError&gt;;\n}\nCurrently implemented providers include:\n\nOllama Provider: For local model execution\npub struct OllamaProvider {\n    client: reqwest::Client,\n    api_url: String,\n    model: String,\n}\nRemote Provider: For cloud-based LLM APIs\npub struct RemoteLlmProvider {\n    client: reqwest::Client,\n    api_url: String,\n    api_key: String,\n    model: String,\n}\n\n\n\n\nNL-Cube uses carefully crafted prompts to guide the LLM in generating SQL:\n\nSchema Context: Database structure is provided to the LLM\nClear Instructions: The prompt contains specific SQL generation rules\nExamples: Sample queries help the model understand the expected output\n\nExample prompt template:\n### Instructions:\nYour task is to convert a question into a SQL query for DuckDB, given a database schema.\nAdhere to these rules:\n- **Be careful with column names - they are case sensitive**\n- **Use the exact spelling of column names as provided in the schema**\n- **Deliberately go through the question and database schema word by word** to appropriately answer the question\n- **Use Table Aliases** to prevent ambiguity.\n- When creating a ratio, always cast the numerator as float\n\n### Input:\nGenerate a SQL query that answers the question `{question}`.\nThis query will run on a DuckDB database with the following tables and columns:\n\n{schema}\n\n### Expected SQL Format:\n- Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)\n- Reference column names exactly as shown in the schema\n- Make sure to use double quotes around column names with spaces or special characters\n- End your query with a semicolon\n\n### Response:\nBased on your instructions, here is the SQL query I have generated:\n```sql\n\n\n\nAfter receiving the LLM response:\n\nSQL Extraction: The generated SQL is extracted from the response\nValidation: Basic syntax checks ensure the SQL is well-formed\nParameter Stripping: Any parameters are properly formatted\n\n\n\n\n\n\n\nNL-Cube supports ingesting data from CSV and Parquet files through a flexible ingestor architecture:\npub trait FileIngestor: Send + Sync {\n    fn ingest(\n        &self,\n        path: &Path,\n        table_name: &str,\n        subject: &str,\n    ) -&gt; Result&lt;schema::TableSchema, IngestError&gt;;\n}\nThe ingestion process for each file type:\n\nCSV Ingestion:\n\nRead sample rows to infer schema\nCreate table with appropriate column types\nUse DuckDB’s read_csv_auto for optimized loading\nVerify row count after ingestion\n\nParquet Ingestion:\n\nExtract schema from Parquet metadata\nCreate matching table structure\nUse DuckDB’s read_parquet for optimized loading\nHandle binary fields and large files\n\n\n\n\n\nNL-Cube uses a combination of techniques to infer the schema from data files:\n\nType Detection: Analyzes sample data to determine column types\nNullability: Determines if columns can contain NULL values\nConstraints: Identifies potential primary keys and constraints\n\nThe schema is represented using a type-safe model:\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub enum DataType {\n    Integer,\n    BigInt,\n    Double,\n    String,\n    Boolean,\n    Date,\n    Timestamp,\n    Unknown(String),\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ColumnSchema {\n    pub name: String,\n    pub data_type: DataType,\n    pub nullable: bool,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct TableSchema {\n    pub name: String,\n    pub columns: Vec&lt;ColumnSchema&gt;,\n}\n\n\n\nNL-Cube uses Apache Arrow for efficient data interchange:\n\nQuery Results: Database query results are converted to Arrow format\nStreaming: Data is streamed to the client in batches\nZero-Copy: The format enables efficient memory usage\nClient Integration: Seamlessly integrates with Perspective visualization\n\n// Convert query results to Arrow\nlet arrow_batch = stmt.query_arrow([])?;\nlet schema = arrow_batch.get_schema();\nlet record_batches = arrow_batch.collect::&lt;Vec&lt;_&gt;&gt;().to_vec();\n\n// Serialize to IPC format\nlet mut buffer = Vec::new();\nlet mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref())?;\nfor batch in &record_batches {\n    file_writer.write(batch)?;\n}\nfile_writer.finish()?;\n\n\n\n\nNL-Cube provides a comprehensive REST API for programmatic access.\n\n\n\n\nPOST /api/query\nExecutes a raw SQL query against the selected subject database.\nRequest:\n{\n  \"query\": \"SELECT * FROM orders LIMIT 10;\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The executed SQL query\n\n\n\nPOST /api/nl-query\nTranslates a natural language question to SQL and executes it.\nRequest:\n{\n  \"question\": \"What are the top 5 products by revenue?\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The generated SQL query\n\n\n\nGET /api/subjects\nReturns a list of available subject databases.\nGET /api/subjects/{subject}\nReturns details about a specific subject, including tables.\nPOST /api/subjects/{subject}\nCreates a new subject database.\nPOST /api/subjects/select/{subject}\nSelects a subject as the current database context.\nDELETE /api/subjects/{subject}\nDeletes a subject database.\n\n\n\nPOST /api/upload/{subject}\nUploads files to a subject database for ingestion.\n\nContent-Type: multipart/form-data\nSupports CSV and Parquet files\n\n\n\n\nGET /api/schema\nReturns the schema definition for the current subject.\n\n\n\nGET /api/reports\nReturns a list of saved reports.\nGET /api/reports/{id}\nReturns a specific saved report.\nPOST /api/reports\nSaves a new report.\nDELETE /api/reports/{id}\nDeletes a saved report.\n\n\n\n\nNL-Cube currently uses stateless authentication. Future versions will support OAuth.\n\n\n\nAPI errors follow a consistent format:\n{\n  \"error\": \"Error message\",\n  \"status\": 400\n}\nCommon status codes: - 200: Success - 400: Bad Request (invalid parameters) - 404: Not Found (subject or resource not found) - 500: Internal Server Error\n\n\n\n\nNL-Cube includes several performance optimizations:\n\nConnection Pooling: Reuses database connections for efficiency\nAsync Processing: Non-blocking I/O for web requests\nBlocking Task Offloading: CPU-intensive tasks run in dedicated threads\nArrow Data Format: Efficient data interchange\nStatic File Embedding: UI assets are embedded in the binary\n\nCritical database operations are executed in dedicated blocking tasks:\ntokio::task::spawn_blocking(move || {\n    let rt = tokio::runtime::Handle::current();\n    let result = rt.block_on(async {\n        // Database operations\n    });\n    let _ = tx.send(result);\n});\n\n\n\n\nInput Validation: All user inputs are validated before processing\nParameterized Queries: Prevents SQL injection\nFile Type Validation: Only allows approved file formats\nResource Limits: Prevents excessive resource usage\nCross-Origin Protection: CORS headers restrict access\n\n\n\n\n\n\nMinimum recommended specifications: - 4GB RAM - 2 CPU cores - 1GB free disk space\n\n\n\nFor larger deployments: - Increase pool_size in configuration - Allocate more memory for DuckDB - Consider using a more powerful machine\n\n\n\n\nDATA_DIR: Override the data directory location\nDEV_MODE: Enable template hot-reloading (development only)",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#duckdb-integration",
-    "href": "technical_details.html#duckdb-integration",
-    "title": "Technical Details",
-    "section": "",
-    "text": "NL-Cube uses DuckDB as its embedded analytics database engine, chosen for its performance and ease of deployment.\n\n\nNL-Cube implements a sophisticated multi-database connection management system:\n\nConnection Pool: Maintains a configurable pool of database connections using r2d2\n// ConnectionManager implementation\nimpl ManageConnection for DuckDBConnectionManager {\n    type Connection = Connection;\n    type Error = duckdb::Error;\n\n    fn connect(&self) -&gt; Result&lt;Self::Connection, Self::Error&gt; {\n        Connection::open(&self.connection_string)\n    }\n\n    fn is_valid(&self, conn: &mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt; {\n        conn.execute(\"SELECT 1\", [])?;\n        Ok(())\n    }\n\n    fn has_broken(&self, _conn: &mut Self::Connection) -&gt; bool {\n        false\n    }\n}\nMulti-Database Support: Each subject gets its own DuckDB database file\npub struct MultiDbConnectionManager {\n    main_db_path: String,\n    data_dir: PathBuf,\n    attached_dbs: Arc&lt;Mutex&lt;HashMap&lt;String, String&gt;&gt;&gt;,\n}\nThread Safety: Blocking database operations are executed in dedicated Tokio tasks\ntokio::task::spawn_blocking(move || {\n    // Database operations that might block\n    let conn = Connection::open(&db_path_string)?;\n    // ...\n})\n\n\n\n\nThe SchemaManager component maintains metadata about database schemas:\n\nSchema Discovery: Scans subject directories for database files\nCache Management: Maintains a cached view of schemas and tables\nRefresh Mechanism: Periodically updates schema information\n\npub struct SchemaManager {\n    schema_cache: RwLock&lt;HashMap&lt;String, Vec&lt;String&gt;&gt;&gt;,\n    last_refresh: RwLock&lt;chrono::DateTime&lt;chrono::Utc&gt;&gt;,\n    data_dir: PathBuf,\n}\n\n\n\nWhen executing a natural language query:\n\nContext Gathering: Schema information is extracted from the database\nLLM Translation: Natural language is translated to SQL\nExecution: SQL is executed against the appropriate subject database\nArrow Conversion: Results are converted to Apache Arrow format\nResponse: Arrow data is returned to the client for visualization\n\n// Simplified query flow\nlet table_metadata = app_state.get_table_metadata(Some(&target_subject)).await?;\nlet raw_sql = mgr.generate_sql(&payload.question, &table_metadata).await?;\nlet conn = duckdb::Connection::open(&db_path)?;\nlet arrow_batch = stmt.query_arrow([])?;",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#llm-integration",
-    "href": "technical_details.html#llm-integration",
-    "title": "Technical Details",
-    "section": "",
-    "text": "NL-Cube features a flexible LLM integration system that supports multiple backends through a provider architecture.\n\n\nThe SqlGenerator trait defines the interface for LLM providers:\n#[async_trait]\npub trait SqlGenerator: Send + Sync {\n    async fn generate_sql(&self, question: &str, schema: &str) -&gt; Result&lt;String, LlmError&gt;;\n}\nCurrently implemented providers include:\n\nOllama Provider: For local model execution\npub struct OllamaProvider {\n    client: reqwest::Client,\n    api_url: String,\n    model: String,\n}\nRemote Provider: For cloud-based LLM APIs\npub struct RemoteLlmProvider {\n    client: reqwest::Client,\n    api_url: String,\n    api_key: String,\n    model: String,\n}\n\n\n\n\nNL-Cube uses carefully crafted prompts to guide the LLM in generating SQL:\n\nSchema Context: Database structure is provided to the LLM\nClear Instructions: The prompt contains specific SQL generation rules\nExamples: Sample queries help the model understand the expected output\n\nExample prompt template:\n### Instructions:\nYour task is to convert a question into a SQL query for DuckDB, given a database schema.\nAdhere to these rules:\n- **Be careful with column names - they are case sensitive**\n- **Use the exact spelling of column names as provided in the schema**\n- **Deliberately go through the question and database schema word by word** to appropriately answer the question\n- **Use Table Aliases** to prevent ambiguity.\n- When creating a ratio, always cast the numerator as float\n\n### Input:\nGenerate a SQL query that answers the question `{question}`.\nThis query will run on a DuckDB database with the following tables and columns:\n\n{schema}\n\n### Expected SQL Format:\n- Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)\n- Reference column names exactly as shown in the schema\n- Make sure to use double quotes around column names with spaces or special characters\n- End your query with a semicolon\n\n### Response:\nBased on your instructions, here is the SQL query I have generated:\n```sql\n\n\n\nAfter receiving the LLM response:\n\nSQL Extraction: The generated SQL is extracted from the response\nValidation: Basic syntax checks ensure the SQL is well-formed\nParameter Stripping: Any parameters are properly formatted",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#data-processing-pipeline",
-    "href": "technical_details.html#data-processing-pipeline",
-    "title": "Technical Details",
-    "section": "",
-    "text": "NL-Cube supports ingesting data from CSV and Parquet files through a flexible ingestor architecture:\npub trait FileIngestor: Send + Sync {\n    fn ingest(\n        &self,\n        path: &Path,\n        table_name: &str,\n        subject: &str,\n    ) -&gt; Result&lt;schema::TableSchema, IngestError&gt;;\n}\nThe ingestion process for each file type:\n\nCSV Ingestion:\n\nRead sample rows to infer schema\nCreate table with appropriate column types\nUse DuckDB’s read_csv_auto for optimized loading\nVerify row count after ingestion\n\nParquet Ingestion:\n\nExtract schema from Parquet metadata\nCreate matching table structure\nUse DuckDB’s read_parquet for optimized loading\nHandle binary fields and large files\n\n\n\n\n\nNL-Cube uses a combination of techniques to infer the schema from data files:\n\nType Detection: Analyzes sample data to determine column types\nNullability: Determines if columns can contain NULL values\nConstraints: Identifies potential primary keys and constraints\n\nThe schema is represented using a type-safe model:\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub enum DataType {\n    Integer,\n    BigInt,\n    Double,\n    String,\n    Boolean,\n    Date,\n    Timestamp,\n    Unknown(String),\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ColumnSchema {\n    pub name: String,\n    pub data_type: DataType,\n    pub nullable: bool,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct TableSchema {\n    pub name: String,\n    pub columns: Vec&lt;ColumnSchema&gt;,\n}\n\n\n\nNL-Cube uses Apache Arrow for efficient data interchange:\n\nQuery Results: Database query results are converted to Arrow format\nStreaming: Data is streamed to the client in batches\nZero-Copy: The format enables efficient memory usage\nClient Integration: Seamlessly integrates with Perspective visualization\n\n// Convert query results to Arrow\nlet arrow_batch = stmt.query_arrow([])?;\nlet schema = arrow_batch.get_schema();\nlet record_batches = arrow_batch.collect::&lt;Vec&lt;_&gt;&gt;().to_vec();\n\n// Serialize to IPC format\nlet mut buffer = Vec::new();\nlet mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref())?;\nfor batch in &record_batches {\n    file_writer.write(batch)?;\n}\nfile_writer.finish()?;",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#web-api-reference",
-    "href": "technical_details.html#web-api-reference",
-    "title": "Technical Details",
-    "section": "",
-    "text": "NL-Cube provides a comprehensive REST API for programmatic access.\n\n\n\n\nPOST /api/query\nExecutes a raw SQL query against the selected subject database.\nRequest:\n{\n  \"query\": \"SELECT * FROM orders LIMIT 10;\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The executed SQL query\n\n\n\nPOST /api/nl-query\nTranslates a natural language question to SQL and executes it.\nRequest:\n{\n  \"question\": \"What are the top 5 products by revenue?\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The generated SQL query\n\n\n\nGET /api/subjects\nReturns a list of available subject databases.\nGET /api/subjects/{subject}\nReturns details about a specific subject, including tables.\nPOST /api/subjects/{subject}\nCreates a new subject database.\nPOST /api/subjects/select/{subject}\nSelects a subject as the current database context.\nDELETE /api/subjects/{subject}\nDeletes a subject database.\n\n\n\nPOST /api/upload/{subject}\nUploads files to a subject database for ingestion.\n\nContent-Type: multipart/form-data\nSupports CSV and Parquet files\n\n\n\n\nGET /api/schema\nReturns the schema definition for the current subject.\n\n\n\nGET /api/reports\nReturns a list of saved reports.\nGET /api/reports/{id}\nReturns a specific saved report.\nPOST /api/reports\nSaves a new report.\nDELETE /api/reports/{id}\nDeletes a saved report.\n\n\n\n\nNL-Cube currently uses stateless authentication. Future versions will support OAuth.\n\n\n\nAPI errors follow a consistent format:\n{\n  \"error\": \"Error message\",\n  \"status\": 400\n}\nCommon status codes: - 200: Success - 400: Bad Request (invalid parameters) - 404: Not Found (subject or resource not found) - 500: Internal Server Error",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#performance-optimizations",
-    "href": "technical_details.html#performance-optimizations",
-    "title": "Technical Details",
-    "section": "",
-    "text": "NL-Cube includes several performance optimizations:\n\nConnection Pooling: Reuses database connections for efficiency\nAsync Processing: Non-blocking I/O for web requests\nBlocking Task Offloading: CPU-intensive tasks run in dedicated threads\nArrow Data Format: Efficient data interchange\nStatic File Embedding: UI assets are embedded in the binary\n\nCritical database operations are executed in dedicated blocking tasks:\ntokio::task::spawn_blocking(move || {\n    let rt = tokio::runtime::Handle::current();\n    let result = rt.block_on(async {\n        // Database operations\n    });\n    let _ = tx.send(result);\n});",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#security-considerations",
-    "href": "technical_details.html#security-considerations",
-    "title": "Technical Details",
-    "section": "",
-    "text": "Input Validation: All user inputs are validated before processing\nParameterized Queries: Prevents SQL injection\nFile Type Validation: Only allows approved file formats\nResource Limits: Prevents excessive resource usage\nCross-Origin Protection: CORS headers restrict access",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
-    "objectID": "technical_details.html#deployment-considerations",
-    "href": "technical_details.html#deployment-considerations",
-    "title": "Technical Details",
-    "section": "",
-    "text": "Minimum recommended specifications: - 4GB RAM - 2 CPU cores - 1GB free disk space\n\n\n\nFor larger deployments: - Increase pool_size in configuration - Allocate more memory for DuckDB - Consider using a more powerful machine\n\n\n\n\nDATA_DIR: Override the data directory location\nDEV_MODE: Enable template hot-reloading (development only)",
-    "crumbs": [
-      "Technical Details"
-    ]
-  },
-  {
     "objectID": "architecture.html",
     "href": "architecture.html",
     "title": "Architecture",
@@ -410,6 +210,86 @@
     ]
   },
   {
+    "objectID": "technical_details.html",
+    "href": "technical_details.html",
+    "title": "Technical Details",
+    "section": "",
+    "text": "This document provides in-depth technical information about NL-Cube’s implementation, covering database integration, LLM functionality, and the data processing pipeline.\n\n\nNL-Cube uses DuckDB as its embedded analytics database engine, chosen for its performance and ease of deployment.\n\n\nNL-Cube implements a sophisticated multi-database connection management system:\n\nConnection Pool: Maintains a configurable pool of database connections using r2d2\n// ConnectionManager implementation\nimpl ManageConnection for DuckDBConnectionManager {\n    type Connection = Connection;\n    type Error = duckdb::Error;\n\n    fn connect(&self) -&gt; Result&lt;Self::Connection, Self::Error&gt; {\n        Connection::open(&self.connection_string)\n    }\n\n    fn is_valid(&self, conn: &mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt; {\n        conn.execute(\"SELECT 1\", [])?;\n        Ok(())\n    }\n\n    fn has_broken(&self, _conn: &mut Self::Connection) -&gt; bool {\n        false\n    }\n}\nMulti-Database Support: Each subject gets its own DuckDB database file\npub struct MultiDbConnectionManager {\n    main_db_path: String,\n    data_dir: PathBuf,\n    attached_dbs: Arc&lt;Mutex&lt;HashMap&lt;String, String&gt;&gt;&gt;,\n}\nThread Safety: Blocking database operations are executed in dedicated Tokio tasks\ntokio::task::spawn_blocking(move || {\n    // Database operations that might block\n    let conn = Connection::open(&db_path_string)?;\n    // ...\n})\n\n\n\n\nThe SchemaManager component maintains metadata about database schemas:\n\nSchema Discovery: Scans subject directories for database files\nCache Management: Maintains a cached view of schemas and tables\nRefresh Mechanism: Periodically updates schema information\n\npub struct SchemaManager {\n    schema_cache: RwLock&lt;HashMap&lt;String, Vec&lt;String&gt;&gt;&gt;,\n    last_refresh: RwLock&lt;chrono::DateTime&lt;chrono::Utc&gt;&gt;,\n    data_dir: PathBuf,\n}\n\n\n\nWhen executing a natural language query:\n\nContext Gathering: Schema information is extracted from the database\nLLM Translation: Natural language is translated to SQL\nExecution: SQL is executed against the appropriate subject database\nArrow Conversion: Results are converted to Apache Arrow format\nResponse: Arrow data is returned to the client for visualization\n\n// Simplified query flow\nlet table_metadata = app_state.get_table_metadata(Some(&target_subject)).await?;\nlet raw_sql = mgr.generate_sql(&payload.question, &table_metadata).await?;\nlet conn = duckdb::Connection::open(&db_path)?;\nlet arrow_batch = stmt.query_arrow([])?;\n\n\n\n\nNL-Cube features a flexible LLM integration system that supports multiple backends through a provider architecture.\n\n\nThe SqlGenerator trait defines the interface for LLM providers:\n#[async_trait]\npub trait SqlGenerator: Send + Sync {\n    async fn generate_sql(&self, question: &str, schema: &str) -&gt; Result&lt;String, LlmError&gt;;\n}\nCurrently implemented providers include:\n\nOllama Provider: For local model execution\npub struct OllamaProvider {\n    client: reqwest::Client,\n    api_url: String,\n    model: String,\n}\nRemote Provider: For cloud-based LLM APIs\npub struct RemoteLlmProvider {\n    client: reqwest::Client,\n    api_url: String,\n    api_key: String,\n    model: String,\n}\n\n\n\n\nNL-Cube uses carefully crafted prompts to guide the LLM in generating SQL:\n\nSchema Context: Database structure is provided to the LLM\nClear Instructions: The prompt contains specific SQL generation rules\nExamples: Sample queries help the model understand the expected output\n\nExample prompt template:\n### Instructions:\nYour task is to convert a question into a SQL query for DuckDB, given a database schema.\nAdhere to these rules:\n- **Be careful with column names - they are case sensitive**\n- **Use the exact spelling of column names as provided in the schema**\n- **Deliberately go through the question and database schema word by word** to appropriately answer the question\n- **Use Table Aliases** to prevent ambiguity.\n- When creating a ratio, always cast the numerator as float\n\n### Input:\nGenerate a SQL query that answers the question `{question}`.\nThis query will run on a DuckDB database with the following tables and columns:\n\n{schema}\n\n### Expected SQL Format:\n- Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)\n- Reference column names exactly as shown in the schema\n- Make sure to use double quotes around column names with spaces or special characters\n- End your query with a semicolon\n\n### Response:\nBased on your instructions, here is the SQL query I have generated:\n```sql\n\n\n\nAfter receiving the LLM response:\n\nSQL Extraction: The generated SQL is extracted from the response\nValidation: Basic syntax checks ensure the SQL is well-formed\nParameter Stripping: Any parameters are properly formatted\n\n\n\n\n\n\n\nNL-Cube supports ingesting data from CSV and Parquet files through a flexible ingestor architecture:\npub trait FileIngestor: Send + Sync {\n    fn ingest(\n        &self,\n        path: &Path,\n        table_name: &str,\n        subject: &str,\n    ) -&gt; Result&lt;schema::TableSchema, IngestError&gt;;\n}\nThe ingestion process for each file type:\n\nCSV Ingestion:\n\nRead sample rows to infer schema\nCreate table with appropriate column types\nUse DuckDB’s read_csv_auto for optimized loading\nVerify row count after ingestion\n\nParquet Ingestion:\n\nExtract schema from Parquet metadata\nCreate matching table structure\nUse DuckDB’s read_parquet for optimized loading\nHandle binary fields and large files\n\n\n\n\n\nNL-Cube uses a combination of techniques to infer the schema from data files:\n\nType Detection: Analyzes sample data to determine column types\nNullability: Determines if columns can contain NULL values\nConstraints: Identifies potential primary keys and constraints\n\nThe schema is represented using a type-safe model:\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub enum DataType {\n    Integer,\n    BigInt,\n    Double,\n    String,\n    Boolean,\n    Date,\n    Timestamp,\n    Unknown(String),\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ColumnSchema {\n    pub name: String,\n    pub data_type: DataType,\n    pub nullable: bool,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct TableSchema {\n    pub name: String,\n    pub columns: Vec&lt;ColumnSchema&gt;,\n}\n\n\n\nNL-Cube uses Apache Arrow for efficient data interchange:\n\nQuery Results: Database query results are converted to Arrow format\nStreaming: Data is streamed to the client in batches\nZero-Copy: The format enables efficient memory usage\nClient Integration: Seamlessly integrates with Perspective visualization\n\n// Convert query results to Arrow\nlet arrow_batch = stmt.query_arrow([])?;\nlet schema = arrow_batch.get_schema();\nlet record_batches = arrow_batch.collect::&lt;Vec&lt;_&gt;&gt;().to_vec();\n\n// Serialize to IPC format\nlet mut buffer = Vec::new();\nlet mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref())?;\nfor batch in &record_batches {\n    file_writer.write(batch)?;\n}\nfile_writer.finish()?;\n\n\n\n\nNL-Cube provides a comprehensive REST API for programmatic access.\n\n\n\n\nPOST /api/query\nExecutes a raw SQL query against the selected subject database.\nRequest:\n{\n  \"query\": \"SELECT * FROM orders LIMIT 10;\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The executed SQL query\n\n\n\nPOST /api/nl-query\nTranslates a natural language question to SQL and executes it.\nRequest:\n{\n  \"question\": \"What are the top 5 products by revenue?\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The generated SQL query\n\n\n\nGET /api/subjects\nReturns a list of available subject databases.\nGET /api/subjects/{subject}\nReturns details about a specific subject, including tables.\nPOST /api/subjects/{subject}\nCreates a new subject database.\nPOST /api/subjects/select/{subject}\nSelects a subject as the current database context.\nDELETE /api/subjects/{subject}\nDeletes a subject database.\n\n\n\nPOST /api/upload/{subject}\nUploads files to a subject database for ingestion.\n\nContent-Type: multipart/form-data\nSupports CSV and Parquet files\n\n\n\n\nGET /api/schema\nReturns the schema definition for the current subject.\n\n\n\nGET /api/reports\nReturns a list of saved reports.\nGET /api/reports/{id}\nReturns a specific saved report.\nPOST /api/reports\nSaves a new report.\nDELETE /api/reports/{id}\nDeletes a saved report.\n\n\n\n\nNL-Cube currently uses stateless authentication. Future versions will support OAuth.\n\n\n\nAPI errors follow a consistent format:\n{\n  \"error\": \"Error message\",\n  \"status\": 400\n}\nCommon status codes: - 200: Success - 400: Bad Request (invalid parameters) - 404: Not Found (subject or resource not found) - 500: Internal Server Error\n\n\n\n\nNL-Cube includes several performance optimizations:\n\nConnection Pooling: Reuses database connections for efficiency\nAsync Processing: Non-blocking I/O for web requests\nBlocking Task Offloading: CPU-intensive tasks run in dedicated threads\nArrow Data Format: Efficient data interchange\nStatic File Embedding: UI assets are embedded in the binary\n\nCritical database operations are executed in dedicated blocking tasks:\ntokio::task::spawn_blocking(move || {\n    let rt = tokio::runtime::Handle::current();\n    let result = rt.block_on(async {\n        // Database operations\n    });\n    let _ = tx.send(result);\n});\n\n\n\n\nInput Validation: All user inputs are validated before processing\nParameterized Queries: Prevents SQL injection\nFile Type Validation: Only allows approved file formats\nResource Limits: Prevents excessive resource usage\nCross-Origin Protection: CORS headers restrict access\n\n\n\n\n\n\nMinimum recommended specifications: - 4GB RAM - 2 CPU cores - 1GB free disk space\n\n\n\nFor larger deployments: - Increase pool_size in configuration - Allocate more memory for DuckDB - Consider using a more powerful machine\n\n\n\n\nDATA_DIR: Override the data directory location\nDEV_MODE: Enable template hot-reloading (development only)",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#duckdb-integration",
+    "href": "technical_details.html#duckdb-integration",
+    "title": "Technical Details",
+    "section": "",
+    "text": "NL-Cube uses DuckDB as its embedded analytics database engine, chosen for its performance and ease of deployment.\n\n\nNL-Cube implements a sophisticated multi-database connection management system:\n\nConnection Pool: Maintains a configurable pool of database connections using r2d2\n// ConnectionManager implementation\nimpl ManageConnection for DuckDBConnectionManager {\n    type Connection = Connection;\n    type Error = duckdb::Error;\n\n    fn connect(&self) -&gt; Result&lt;Self::Connection, Self::Error&gt; {\n        Connection::open(&self.connection_string)\n    }\n\n    fn is_valid(&self, conn: &mut Self::Connection) -&gt; Result&lt;(), Self::Error&gt; {\n        conn.execute(\"SELECT 1\", [])?;\n        Ok(())\n    }\n\n    fn has_broken(&self, _conn: &mut Self::Connection) -&gt; bool {\n        false\n    }\n}\nMulti-Database Support: Each subject gets its own DuckDB database file\npub struct MultiDbConnectionManager {\n    main_db_path: String,\n    data_dir: PathBuf,\n    attached_dbs: Arc&lt;Mutex&lt;HashMap&lt;String, String&gt;&gt;&gt;,\n}\nThread Safety: Blocking database operations are executed in dedicated Tokio tasks\ntokio::task::spawn_blocking(move || {\n    // Database operations that might block\n    let conn = Connection::open(&db_path_string)?;\n    // ...\n})\n\n\n\n\nThe SchemaManager component maintains metadata about database schemas:\n\nSchema Discovery: Scans subject directories for database files\nCache Management: Maintains a cached view of schemas and tables\nRefresh Mechanism: Periodically updates schema information\n\npub struct SchemaManager {\n    schema_cache: RwLock&lt;HashMap&lt;String, Vec&lt;String&gt;&gt;&gt;,\n    last_refresh: RwLock&lt;chrono::DateTime&lt;chrono::Utc&gt;&gt;,\n    data_dir: PathBuf,\n}\n\n\n\nWhen executing a natural language query:\n\nContext Gathering: Schema information is extracted from the database\nLLM Translation: Natural language is translated to SQL\nExecution: SQL is executed against the appropriate subject database\nArrow Conversion: Results are converted to Apache Arrow format\nResponse: Arrow data is returned to the client for visualization\n\n// Simplified query flow\nlet table_metadata = app_state.get_table_metadata(Some(&target_subject)).await?;\nlet raw_sql = mgr.generate_sql(&payload.question, &table_metadata).await?;\nlet conn = duckdb::Connection::open(&db_path)?;\nlet arrow_batch = stmt.query_arrow([])?;",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#llm-integration",
+    "href": "technical_details.html#llm-integration",
+    "title": "Technical Details",
+    "section": "",
+    "text": "NL-Cube features a flexible LLM integration system that supports multiple backends through a provider architecture.\n\n\nThe SqlGenerator trait defines the interface for LLM providers:\n#[async_trait]\npub trait SqlGenerator: Send + Sync {\n    async fn generate_sql(&self, question: &str, schema: &str) -&gt; Result&lt;String, LlmError&gt;;\n}\nCurrently implemented providers include:\n\nOllama Provider: For local model execution\npub struct OllamaProvider {\n    client: reqwest::Client,\n    api_url: String,\n    model: String,\n}\nRemote Provider: For cloud-based LLM APIs\npub struct RemoteLlmProvider {\n    client: reqwest::Client,\n    api_url: String,\n    api_key: String,\n    model: String,\n}\n\n\n\n\nNL-Cube uses carefully crafted prompts to guide the LLM in generating SQL:\n\nSchema Context: Database structure is provided to the LLM\nClear Instructions: The prompt contains specific SQL generation rules\nExamples: Sample queries help the model understand the expected output\n\nExample prompt template:\n### Instructions:\nYour task is to convert a question into a SQL query for DuckDB, given a database schema.\nAdhere to these rules:\n- **Be careful with column names - they are case sensitive**\n- **Use the exact spelling of column names as provided in the schema**\n- **Deliberately go through the question and database schema word by word** to appropriately answer the question\n- **Use Table Aliases** to prevent ambiguity.\n- When creating a ratio, always cast the numerator as float\n\n### Input:\nGenerate a SQL query that answers the question `{question}`.\nThis query will run on a DuckDB database with the following tables and columns:\n\n{schema}\n\n### Expected SQL Format:\n- Use lowercase for SQL keywords (SELECT, FROM, WHERE, etc.)\n- Reference column names exactly as shown in the schema\n- Make sure to use double quotes around column names with spaces or special characters\n- End your query with a semicolon\n\n### Response:\nBased on your instructions, here is the SQL query I have generated:\n```sql\n\n\n\nAfter receiving the LLM response:\n\nSQL Extraction: The generated SQL is extracted from the response\nValidation: Basic syntax checks ensure the SQL is well-formed\nParameter Stripping: Any parameters are properly formatted",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#data-processing-pipeline",
+    "href": "technical_details.html#data-processing-pipeline",
+    "title": "Technical Details",
+    "section": "",
+    "text": "NL-Cube supports ingesting data from CSV and Parquet files through a flexible ingestor architecture:\npub trait FileIngestor: Send + Sync {\n    fn ingest(\n        &self,\n        path: &Path,\n        table_name: &str,\n        subject: &str,\n    ) -&gt; Result&lt;schema::TableSchema, IngestError&gt;;\n}\nThe ingestion process for each file type:\n\nCSV Ingestion:\n\nRead sample rows to infer schema\nCreate table with appropriate column types\nUse DuckDB’s read_csv_auto for optimized loading\nVerify row count after ingestion\n\nParquet Ingestion:\n\nExtract schema from Parquet metadata\nCreate matching table structure\nUse DuckDB’s read_parquet for optimized loading\nHandle binary fields and large files\n\n\n\n\n\nNL-Cube uses a combination of techniques to infer the schema from data files:\n\nType Detection: Analyzes sample data to determine column types\nNullability: Determines if columns can contain NULL values\nConstraints: Identifies potential primary keys and constraints\n\nThe schema is represented using a type-safe model:\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub enum DataType {\n    Integer,\n    BigInt,\n    Double,\n    String,\n    Boolean,\n    Date,\n    Timestamp,\n    Unknown(String),\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ColumnSchema {\n    pub name: String,\n    pub data_type: DataType,\n    pub nullable: bool,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct TableSchema {\n    pub name: String,\n    pub columns: Vec&lt;ColumnSchema&gt;,\n}\n\n\n\nNL-Cube uses Apache Arrow for efficient data interchange:\n\nQuery Results: Database query results are converted to Arrow format\nStreaming: Data is streamed to the client in batches\nZero-Copy: The format enables efficient memory usage\nClient Integration: Seamlessly integrates with Perspective visualization\n\n// Convert query results to Arrow\nlet arrow_batch = stmt.query_arrow([])?;\nlet schema = arrow_batch.get_schema();\nlet record_batches = arrow_batch.collect::&lt;Vec&lt;_&gt;&gt;().to_vec();\n\n// Serialize to IPC format\nlet mut buffer = Vec::new();\nlet mut file_writer = arrow::ipc::writer::FileWriter::try_new(&mut buffer, schema.deref())?;\nfor batch in &record_batches {\n    file_writer.write(batch)?;\n}\nfile_writer.finish()?;",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#web-api-reference",
+    "href": "technical_details.html#web-api-reference",
+    "title": "Technical Details",
+    "section": "",
+    "text": "NL-Cube provides a comprehensive REST API for programmatic access.\n\n\n\n\nPOST /api/query\nExecutes a raw SQL query against the selected subject database.\nRequest:\n{\n  \"query\": \"SELECT * FROM orders LIMIT 10;\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The executed SQL query\n\n\n\nPOST /api/nl-query\nTranslates a natural language question to SQL and executes it.\nRequest:\n{\n  \"question\": \"What are the top 5 products by revenue?\"\n}\nResponse: - Content-Type: application/vnd.apache.arrow.file - Headers: - X-Total-Count: Number of rows - X-Execution-Time: Execution time in ms - X-Columns: JSON array of column names - X-Generated-SQL: The generated SQL query\n\n\n\nGET /api/subjects\nReturns a list of available subject databases.\nGET /api/subjects/{subject}\nReturns details about a specific subject, including tables.\nPOST /api/subjects/{subject}\nCreates a new subject database.\nPOST /api/subjects/select/{subject}\nSelects a subject as the current database context.\nDELETE /api/subjects/{subject}\nDeletes a subject database.\n\n\n\nPOST /api/upload/{subject}\nUploads files to a subject database for ingestion.\n\nContent-Type: multipart/form-data\nSupports CSV and Parquet files\n\n\n\n\nGET /api/schema\nReturns the schema definition for the current subject.\n\n\n\nGET /api/reports\nReturns a list of saved reports.\nGET /api/reports/{id}\nReturns a specific saved report.\nPOST /api/reports\nSaves a new report.\nDELETE /api/reports/{id}\nDeletes a saved report.\n\n\n\n\nNL-Cube currently uses stateless authentication. Future versions will support OAuth.\n\n\n\nAPI errors follow a consistent format:\n{\n  \"error\": \"Error message\",\n  \"status\": 400\n}\nCommon status codes: - 200: Success - 400: Bad Request (invalid parameters) - 404: Not Found (subject or resource not found) - 500: Internal Server Error",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#performance-optimizations",
+    "href": "technical_details.html#performance-optimizations",
+    "title": "Technical Details",
+    "section": "",
+    "text": "NL-Cube includes several performance optimizations:\n\nConnection Pooling: Reuses database connections for efficiency\nAsync Processing: Non-blocking I/O for web requests\nBlocking Task Offloading: CPU-intensive tasks run in dedicated threads\nArrow Data Format: Efficient data interchange\nStatic File Embedding: UI assets are embedded in the binary\n\nCritical database operations are executed in dedicated blocking tasks:\ntokio::task::spawn_blocking(move || {\n    let rt = tokio::runtime::Handle::current();\n    let result = rt.block_on(async {\n        // Database operations\n    });\n    let _ = tx.send(result);\n});",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#security-considerations",
+    "href": "technical_details.html#security-considerations",
+    "title": "Technical Details",
+    "section": "",
+    "text": "Input Validation: All user inputs are validated before processing\nParameterized Queries: Prevents SQL injection\nFile Type Validation: Only allows approved file formats\nResource Limits: Prevents excessive resource usage\nCross-Origin Protection: CORS headers restrict access",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
+    "objectID": "technical_details.html#deployment-considerations",
+    "href": "technical_details.html#deployment-considerations",
+    "title": "Technical Details",
+    "section": "",
+    "text": "Minimum recommended specifications: - 4GB RAM - 2 CPU cores - 1GB free disk space\n\n\n\nFor larger deployments: - Increase pool_size in configuration - Allocate more memory for DuckDB - Consider using a more powerful machine\n\n\n\n\nDATA_DIR: Override the data directory location\nDEV_MODE: Enable template hot-reloading (development only)",
+    "crumbs": [
+      "Technical Details"
+    ]
+  },
+  {
     "objectID": "user_guide.html",
     "href": "user_guide.html",
     "title": "User Guide",
@@ -467,6 +347,126 @@
     "text": "No data appears after upload:\n\nCheck file format (should be valid CSV or Parquet)\nVerify file has headers and valid data\nCheck browser console for any error messages\n\nQuery returns unexpected results:\n\nTry rephrasing your question to be more specific\nToggle SQL preview to see how your question was interpreted\nExamine the SQL to identify potential misinterpretations\nMake sure that you refer to column names, the LLM won’t necessarily figure out that customer means cust_id - larger LLMs will handle this better\n\nPerformance issues with large datasets:\n\nConsider splitting very large files into smaller chunks\nAdd specific filters to your natural language query\nLimit the time range in your query when possible\n\n\n\n\n\nCheck the GitHub repository for issues and updates\nSubmit bug reports using the issue template\nContribute improvements via pull requests",
     "crumbs": [
       "User Guide"
+    ]
+  },
+  {
+    "objectID": "roadmap.html",
+    "href": "roadmap.html",
+    "title": "Roadmap",
+    "section": "",
+    "text": "This document outlines the planned future development of NL-Cube. The roadmap is organized into short-term, medium-term, and long-term goals to provide a clear vision of where the project is headed.\n\n\n\n\nExpand NL-Cube’s data ingestion capabilities to support all formats that DuckDB can handle:\n\nJSON Files: Support for structured JSON data files\nExcel Files: Direct import of XLSX/XLS spreadsheets\nORC Files: Support for Optimized Row Columnar format\nAvro Files: Support for Apache Avro format\nXML Files: Structured XML document ingestion\nHTTP/REST Sources: Direct import from REST APIs\nDatabase Connections: Import from other databases\n\nImplementation will leverage DuckDB’s built-in capabilities:\n-- Example of how DuckDB handles different formats\nCREATE TABLE json_table AS SELECT * FROM read_json('data.json', auto_detect=true);\nCREATE TABLE excel_table AS SELECT * FROM read_excel('data.xlsx');\nCREATE TABLE orc_table AS SELECT * FROM read_orc('data.orc');\n\n\n\n\nImproved type detection for edge cases\nBetter handling of date/time formats\nDetection of primary and foreign keys\nSmart detection of hierarchical data\nPreservation of original metadata\n\n\n\n\n\n\n\n\nIntegration with Rig crate for LLM orchestration\nUser-selectable models through configuration\nDynamically switchable LLM providers\nModel version tracking and compatibility checks\nPerformance benchmarking across models\n\nConfiguration example:\n# Different models can be configured\n[[llm.models]]\nname = \"sqlcoder-34b\"\nprovider = \"databricks\"\nmodel_id = \"databricks/dbrx-instruct\"\n\n[[llm.models]]\nname = \"arctic-sqler\"\nprovider = \"anthropic\"\nmodel_id = \"claude-3-opus-20240229\"\n\n\n\n\nUser-editable prompt templates\nDomain-specific prompt optimization\nFew-shot learning examples for specialized domains\nPrompt versioning and A/B testing\n\n\n\n\n\n\n\n\nTemplate-Based Reports: Customizable report templates\nScheduled Reports: Automated report generation\nExport Formats: PDF, Excel, HTML, and Markdown\nCollaboration: Sharing and commenting on reports\nVersioning: Track changes to reports over time\n\n\n\n\n\nExpanded chart types and visualizations\nCustom visualization themes\nInteractive dashboards\nEmbeddable report widgets\nAnnotation and markup tools\n\n\n\n\n\n\n\n\nGUI for defining relationships between tables\nAutomatic foreign key detection\nEntity-relationship diagram generation\nJoin path recommendations for queries\nReferential integrity enforcement\n\nExample relationship definition:\n{\n  \"relationships\": [\n    {\n      \"from\": {\n        \"table\": \"orders\",\n        \"column\": \"customer_id\"\n      },\n      \"to\": {\n        \"table\": \"customers\",\n        \"column\": \"id\"\n      },\n      \"type\": \"many-to-one\"\n    }\n  ]\n}\n\n\n\n\nAllow addition of data to existing tables\nSchema evolution and migration\nColumn-level metadata and descriptions\nData quality constraints\nSchema versioning\n\n\n\n\n\n\n\n\nAutomated ingestion of files from watched directories\nConfigurable processing rules based on file patterns\nError handling and notification for problematic files\nThrottling and batching for high-volume scenarios\nProcessing history and audit logs\n\nConfiguration example:\n[[watch_folders]]\npath = \"data/incoming/sales\"\nsubject = \"sales\"\npattern = \"*.csv\"\ntable_prefix = \"sales_\"\npoll_interval_seconds = 30\n\n\n\n\nIntegration with Apache Kafka and other streaming platforms\nReal-time data processing pipelines\nWindowed aggregations on streaming data\nConfigurable stream processors\nStream-to-table materialization\n\nExample Kafka configuration:\n[[streaming.sources]]\ntype = \"kafka\"\nbootstrap_servers = \"kafka1:9092,kafka2:9092\"\ntopic = \"sales_data\"\ngroup_id = \"nl-cube-consumer\"\nsubject = \"sales\"\ntable = \"real_time_sales\"\n\n\n\n\nUser-defined aggregate definitions\nIncremental aggregation updates\nTime-based and event-based windows\nDirect Perspective integration for live updates\nMaterialized view management\n\n\n\n\n\n\n\n\nSupport for OAuth 2.0 authentication flows\nIntegration with identity providers (Google, GitHub, Microsoft)\nJWT token handling\nRole-based authorization\nAPI key management for programmatic access\n\n\n\n\n\nUser account management\nPersonalized settings and preferences\nResource quotas and usage tracking\nActivity logging and audit trails\nAccess control for subjects and reports\n\n\n\n\n\n\n\n\nOption to bundle lightweight local LLMs\nOptimized models for SQL generation\nNo internet dependency for core functionality\nFine-tuning tools for domain-specific datasets\nModel switchover between local and remote as needed\n\n\n\n\n\nDomain-specific sample datasets\nExample queries and reports\nGuided tutorials using sample data\nBenchmarking datasets\nEasy data reset and refresh\n\n\n\n\n\n\n\n\nIntelligent suggestions as you type\nAuto-completion for column names and values\nQuery history integration\nContext-aware suggestions based on schema\nSemantic understanding of partial queries\n\n\n\n\n\nOffline capability\nMobile-friendly responsive design\nNative app-like experience\nPush notifications\nBackground synchronization\n\n\n\n\n\nComprehensive keyboard navigation\nCustomizable keyboard shortcuts\nCommand palette for quick actions\nBatch operations\nQuery scripting capabilities\n\n\n\n\n\n\n\n\nCentralized deployment management\nUsage analytics and monitoring\nBackup and disaster recovery\nResource governance\nHealth checks and diagnostics\n\n\n\n\n\nAPI for third-party integration\nPlugin architecture\nWebhooks for event-driven workflows\nSSO integration\nEnterprise data catalog integration\n\n\n\n\n\n\n\n\nAdditional file formats: JSON, Excel\nReport saving and management\nBasic relationship definition\nData append to existing tables\nAuto-complete for column names\n\n\n\n\n\nHot watch folder for auto-ingestion\nStreaming data support (Kafka)\nUser-defined aggregates\nOAuth security integration\nLocal LLM bundling options\n\n\n\n\n\nFull multi-user mode\nEnterprise administration\nAdvanced streaming analytics\nComprehensive plugin system\nAI-assisted data modeling\n\n\n\n\n\nThe NL-Cube roadmap is guided by user feedback and community needs. We welcome contributions and suggestions through:\n\nGitHub issues and discussions\nCommunity forums\nUser feedback surveys\nUsage analytics\n\nPriority will be given to features that:\n\nImprove core natural language query capabilities\nEnhance user experience for non-technical users\nExpand data connectivity options\nSimplify deployment and administration\n\nTo contribute to the roadmap or provide feedback, please open an issue on the GitHub repository.",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#data-import-enhancements",
+    "href": "roadmap.html#data-import-enhancements",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Expand NL-Cube’s data ingestion capabilities to support all formats that DuckDB can handle:\n\nJSON Files: Support for structured JSON data files\nExcel Files: Direct import of XLSX/XLS spreadsheets\nORC Files: Support for Optimized Row Columnar format\nAvro Files: Support for Apache Avro format\nXML Files: Structured XML document ingestion\nHTTP/REST Sources: Direct import from REST APIs\nDatabase Connections: Import from other databases\n\nImplementation will leverage DuckDB’s built-in capabilities:\n-- Example of how DuckDB handles different formats\nCREATE TABLE json_table AS SELECT * FROM read_json('data.json', auto_detect=true);\nCREATE TABLE excel_table AS SELECT * FROM read_excel('data.xlsx');\nCREATE TABLE orc_table AS SELECT * FROM read_orc('data.orc');\n\n\n\n\nImproved type detection for edge cases\nBetter handling of date/time formats\nDetection of primary and foreign keys\nSmart detection of hierarchical data\nPreservation of original metadata",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#expanded-llm-support",
+    "href": "roadmap.html#expanded-llm-support",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Integration with Rig crate for LLM orchestration\nUser-selectable models through configuration\nDynamically switchable LLM providers\nModel version tracking and compatibility checks\nPerformance benchmarking across models\n\nConfiguration example:\n# Different models can be configured\n[[llm.models]]\nname = \"sqlcoder-34b\"\nprovider = \"databricks\"\nmodel_id = \"databricks/dbrx-instruct\"\n\n[[llm.models]]\nname = \"arctic-sqler\"\nprovider = \"anthropic\"\nmodel_id = \"claude-3-opus-20240229\"\n\n\n\n\nUser-editable prompt templates\nDomain-specific prompt optimization\nFew-shot learning examples for specialized domains\nPrompt versioning and A/B testing",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#report-management",
+    "href": "roadmap.html#report-management",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Template-Based Reports: Customizable report templates\nScheduled Reports: Automated report generation\nExport Formats: PDF, Excel, HTML, and Markdown\nCollaboration: Sharing and commenting on reports\nVersioning: Track changes to reports over time\n\n\n\n\n\nExpanded chart types and visualizations\nCustom visualization themes\nInteractive dashboards\nEmbeddable report widgets\nAnnotation and markup tools",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#advanced-data-modeling",
+    "href": "roadmap.html#advanced-data-modeling",
+    "title": "Roadmap",
+    "section": "",
+    "text": "GUI for defining relationships between tables\nAutomatic foreign key detection\nEntity-relationship diagram generation\nJoin path recommendations for queries\nReferential integrity enforcement\n\nExample relationship definition:\n{\n  \"relationships\": [\n    {\n      \"from\": {\n        \"table\": \"orders\",\n        \"column\": \"customer_id\"\n      },\n      \"to\": {\n        \"table\": \"customers\",\n        \"column\": \"id\"\n      },\n      \"type\": \"many-to-one\"\n    }\n  ]\n}\n\n\n\n\nAllow addition of data to existing tables\nSchema evolution and migration\nColumn-level metadata and descriptions\nData quality constraints\nSchema versioning",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#real-time-data-processing",
+    "href": "roadmap.html#real-time-data-processing",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Automated ingestion of files from watched directories\nConfigurable processing rules based on file patterns\nError handling and notification for problematic files\nThrottling and batching for high-volume scenarios\nProcessing history and audit logs\n\nConfiguration example:\n[[watch_folders]]\npath = \"data/incoming/sales\"\nsubject = \"sales\"\npattern = \"*.csv\"\ntable_prefix = \"sales_\"\npoll_interval_seconds = 30\n\n\n\n\nIntegration with Apache Kafka and other streaming platforms\nReal-time data processing pipelines\nWindowed aggregations on streaming data\nConfigurable stream processors\nStream-to-table materialization\n\nExample Kafka configuration:\n[[streaming.sources]]\ntype = \"kafka\"\nbootstrap_servers = \"kafka1:9092,kafka2:9092\"\ntopic = \"sales_data\"\ngroup_id = \"nl-cube-consumer\"\nsubject = \"sales\"\ntable = \"real_time_sales\"\n\n\n\n\nUser-defined aggregate definitions\nIncremental aggregation updates\nTime-based and event-based windows\nDirect Perspective integration for live updates\nMaterialized view management",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#security-and-multi-user-support",
+    "href": "roadmap.html#security-and-multi-user-support",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Support for OAuth 2.0 authentication flows\nIntegration with identity providers (Google, GitHub, Microsoft)\nJWT token handling\nRole-based authorization\nAPI key management for programmatic access\n\n\n\n\n\nUser account management\nPersonalized settings and preferences\nResource quotas and usage tracking\nActivity logging and audit trails\nAccess control for subjects and reports",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#local-llm-integration",
+    "href": "roadmap.html#local-llm-integration",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Option to bundle lightweight local LLMs\nOptimized models for SQL generation\nNo internet dependency for core functionality\nFine-tuning tools for domain-specific datasets\nModel switchover between local and remote as needed\n\n\n\n\n\nDomain-specific sample datasets\nExample queries and reports\nGuided tutorials using sample data\nBenchmarking datasets\nEasy data reset and refresh",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#user-experience-improvements",
+    "href": "roadmap.html#user-experience-improvements",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Intelligent suggestions as you type\nAuto-completion for column names and values\nQuery history integration\nContext-aware suggestions based on schema\nSemantic understanding of partial queries\n\n\n\n\n\nOffline capability\nMobile-friendly responsive design\nNative app-like experience\nPush notifications\nBackground synchronization\n\n\n\n\n\nComprehensive keyboard navigation\nCustomizable keyboard shortcuts\nCommand palette for quick actions\nBatch operations\nQuery scripting capabilities",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#enterprise-features",
+    "href": "roadmap.html#enterprise-features",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Centralized deployment management\nUsage analytics and monitoring\nBackup and disaster recovery\nResource governance\nHealth checks and diagnostics\n\n\n\n\n\nAPI for third-party integration\nPlugin architecture\nWebhooks for event-driven workflows\nSSO integration\nEnterprise data catalog integration",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#development-milestones",
+    "href": "roadmap.html#development-milestones",
+    "title": "Roadmap",
+    "section": "",
+    "text": "Additional file formats: JSON, Excel\nReport saving and management\nBasic relationship definition\nData append to existing tables\nAuto-complete for column names\n\n\n\n\n\nHot watch folder for auto-ingestion\nStreaming data support (Kafka)\nUser-defined aggregates\nOAuth security integration\nLocal LLM bundling options\n\n\n\n\n\nFull multi-user mode\nEnterprise administration\nAdvanced streaming analytics\nComprehensive plugin system\nAI-assisted data modeling",
+    "crumbs": [
+      "Roadmap"
+    ]
+  },
+  {
+    "objectID": "roadmap.html#feedback-and-prioritization",
+    "href": "roadmap.html#feedback-and-prioritization",
+    "title": "Roadmap",
+    "section": "",
+    "text": "The NL-Cube roadmap is guided by user feedback and community needs. We welcome contributions and suggestions through:\n\nGitHub issues and discussions\nCommunity forums\nUser feedback surveys\nUsage analytics\n\nPriority will be given to features that:\n\nImprove core natural language query capabilities\nEnhance user experience for non-technical users\nExpand data connectivity options\nSimplify deployment and administration\n\nTo contribute to the roadmap or provide feedback, please open an issue on the GitHub repository.",
+    "crumbs": [
+      "Roadmap"
     ]
   },
   {
